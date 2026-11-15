@@ -11,7 +11,7 @@ const state = {
   house: query.get('house') || saved.house || '110', selected: query.get('item') || '13463',
   favorites: new Set(safeRead('fm-favorites', [])), favoritesOnly: false, query: '', sort: 'name', direction: 1, page: 1,
   days: 7, metric: 0, demo: false, source: safeRead('fm-source', ''), index: null, names: {}, summary: null, history: null,
-  loading: false, request: 0, error: '',
+  loading: false, request: 0, error: '', basket: safeRead('fm-basket', {}),
 };
 const PAGE_SIZE = 9;
 const regionNames = { eu: 'Европа · EU', us: 'Америка · US', kr: 'Корея · KR', tw: 'Тайвань · TW' };
@@ -164,6 +164,18 @@ function toggleFavorite(id) {
   state.favorites.has(id) ? state.favorites.delete(id) : state.favorites.add(id);
   safeWrite('fm-favorites', [...state.favorites]); renderStats(); renderTable(); renderDetail();
 }
+function renderBasket() {
+  const entries = Object.entries(state.basket).filter(([id, qty]) => /^\d+$/.test(id) && Number.isInteger(qty) && qty > 0);
+  let total = 0, missing = 0;
+  const rows = entries.map(([id, qty]) => {
+    const v = state.summary?.items[id];
+    if (v) total += v[0] * qty; else missing++;
+    return `<div class="basket-row"><span>${escape(nameOf(id))} <small> #${escape(id)}</small></span><label>Qty / Кол-во <input type="number" min="1" max="1000000" value="${qty}" data-qty="${id}" aria-label="Quantity / Количество"></label><strong>${v ? money(v[0] * qty) : '—'}</strong><button class="icon-button" data-remove="${id}" aria-label="Remove / Удалить">×</button></div>`;
+  });
+  $('basket-content').innerHTML = entries.length ? rows.join('') + `<p class="basket-total">Estimated total / Примерная сумма: <strong>${money(total)}</strong>${missing ? ` · ${missing} unavailable / недоступно` : ''}</p><p class="method-note">Estimate uses lowest unit price, assumes enough stock at that price and may differ from the actual cost. / Оценка по минимальной цене за единицу; реальная стоимость может быть выше.</p>` : '<p class="basket-empty">Select an item and add it here. / Выберите предмет и добавьте его в корзину.</p>';
+  $('basket-content').querySelectorAll('[data-qty]').forEach(input => input.addEventListener('change', () => { const value = Number(input.value); if (Number.isInteger(value) && value > 0 && value <= 1000000) state.basket[input.dataset.qty] = value; safeWrite('fm-basket', state.basket); renderBasket(); }));
+  $('basket-content').querySelectorAll('[data-remove]').forEach(button => button.addEventListener('click', () => { delete state.basket[button.dataset.remove]; safeWrite('fm-basket', state.basket); renderBasket(); }));
+}
 function renderDetail() {
   const id = state.selected, values = state.summary?.items[id];
   $('detail-name').textContent = values ? nameOf(id) : 'Выберите предмет';
@@ -177,6 +189,11 @@ function renderDetail() {
   $('detail-favorite').setAttribute('aria-label', state.favorites.has(id) ? 'Убрать из избранного' : 'Добавить в избранное');
   const now = Math.floor(Date.now() / 1000);
   const points = values ? historyPoints(state.history, id, state.days, now) : [];
+  const week = historyPoints(state.history, id, 7, now).filter(p => p.values && Number.isFinite(p.values[0]));
+  const average = week.length ? week.reduce((sum, p) => sum + p.values[0], 0) / week.length : 0;
+  const pct = average && values ? (values[0] / average - 1) * 100 : null;
+  $('market-insight').textContent = pct === null || week.length < 3 ? 'Need at least 3 snapshots for a 7-day comparison. / Для сравнения нужно минимум 3 снимка.' : `Current minimum is ${Math.abs(pct).toFixed(0)}% ${pct < 0 ? 'below / ниже' : 'above / выше'} the average of ${week.length} hourly snapshots over 7 days. / средней цены по снимкам за 7 дней.`;
+  $('basket-add').disabled = !values;
   const observed = points.filter(p => p.values && Number.isFinite(p.values[state.metric]));
   const prices = observed.map(p => p.values[state.metric]);
   $('period-low').innerHTML = prices.length ? money(Math.min(...prices)) : '—';
@@ -227,7 +244,7 @@ function renderChart(points) {
   });
   svg.addEventListener('pointerleave', () => { tooltip.hidden = true; chart.querySelector('#crosshair').setAttribute('visibility', 'hidden'); chart.querySelector('#hover-dot').setAttribute('visibility', 'hidden'); });
 }
-function renderAll() { renderNotice(); renderFeed(); renderStats(); renderTable(); renderDetail(); }
+function renderAll() { renderBasket(); renderNotice(); renderFeed(); renderStats(); renderTable(); renderDetail(); }
 function showSettings() { $('data-source').value = state.source; $('settings-feedback').textContent = ''; if (!$('settings-dialog').open) $('settings-dialog').showModal(); }
 function changeView(favorites) {
   state.favoritesOnly = favorites; state.page = 1;
@@ -242,6 +259,7 @@ $('house').addEventListener('change', () => { state.house = $('house').value; lo
 $('search').addEventListener('input', () => { state.query = $('search').value; state.page = 1; renderTable(); });
 $('previous').addEventListener('click', () => { state.page--; renderTable(); });
 $('next').addEventListener('click', () => { state.page++; renderTable(); });
+$('basket-add').addEventListener('click', () => { if (!state.selected || !state.summary?.items[state.selected]) return; state.basket[state.selected] = (state.basket[state.selected] || 0) + 1; safeWrite('fm-basket', state.basket); renderBasket(); });
 $('detail-favorite').addEventListener('click', () => toggleFavorite(state.selected));
 $('market-tab').addEventListener('click', () => changeView(false)); $('favorites-tab').addEventListener('click', () => changeView(true));
 $('settings-button').addEventListener('click', showSettings); $('about-button').addEventListener('click', showSettings); $('method-button').addEventListener('click', showSettings);
