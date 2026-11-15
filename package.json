@@ -1,0 +1,1 @@
+{"name":"forever-market","private":true,"type":"module","scripts":{"build":"node scripts/build.mjs","test":"node --test tests/*.test.mjs && python3 -m unittest discover -s tests -p 'test_*.py'"}}
