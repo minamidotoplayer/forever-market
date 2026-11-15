@@ -11,7 +11,7 @@ const state = {
   house: query.get('house') || saved.house || '110', selected: query.get('item') || '13463',
   favorites: new Set(safeRead('fm-favorites', [])), favoritesOnly: false, query: '', sort: 'name', direction: 1, page: 1,
   days: 7, metric: 0, demo: false, source: safeRead('fm-source', ''), index: null, names: {}, summary: null, history: null,
-  loading: false, request: 0, error: '', basket: safeRead('fm-basket', {}),
+  recipeOutput: '', recipeRequest: 0, loading: false, request: 0, error: '', basket: safeRead('fm-basket', {}),
 };
 const PAGE_SIZE = 9;
 const regionNames = { eu: 'Европа · EU', us: 'Америка · US', kr: 'Корея · KR', tw: 'Тайвань · TW' };
@@ -179,9 +179,10 @@ function renderBasket() {
 }
 function renderCraft(entries, ingredientCost, missing) {
   const select = $('craft-output');
-  const previous = select.value || state.selected;
+  const previous = state.recipeOutput || select.value || state.selected;
   const ids = Object.keys(state.summary?.items || {});
-  options('craft-output', ids.map(id => [id, `${nameOf(id)} (#${id})`]), ids.includes(previous) ? previous : state.selected);
+  const outputIds = ids.includes(previous) || !previous ? ids : [previous, ...ids];
+  options('craft-output', outputIds.map(id => [id, `${nameOf(id)} (#${id})${ids.includes(id) ? '' : ' — no listing / нет лотов'}`]), outputIds.includes(previous) ? previous : state.selected);
   const count = Number($('craft-count').value), fee = Number($('craft-fee').value), output = state.summary?.items[select.value];
   if (!entries.length || missing || !output || !Number.isInteger(count) || count < 1 || count > 10000 || !Number.isFinite(fee) || fee < 0 || fee > 100) {
     $('craft-result').textContent = 'Add available ingredients, choose an output, and enter valid quantities. Requires current listing data. / Добавьте доступные материалы, выберите результат и проверьте количество. Требуются данные лотов.'; return;
@@ -277,8 +278,46 @@ $('house').addEventListener('change', () => { state.house = $('house').value; lo
 $('search').addEventListener('input', () => { state.query = $('search').value; state.page = 1; renderTable(); });
 $('previous').addEventListener('click', () => { state.page--; renderTable(); });
 $('next').addEventListener('click', () => { state.page++; renderTable(); });
+let recipeModule;
+async function findRecipes() {
+  const query = $('recipe-search').value.trim();
+  const request = ++state.recipeRequest;
+  if (!query) { $('recipe-results').textContent = 'Enter a recipe name. / Введите название рецепта.'; return; }
+  $('recipe-results').textContent = 'Searching… / Поиск…';
+  try {
+    recipeModule ||= import('https://warcraftforever.com/data/latest.mjs').catch(error => { recipeModule = null; throw error; });
+    const api = await recipeModule;
+    const locale = document.documentElement.lang === 'ru' ? 'ruRU' : 'enUS';
+    const result = await api.Recipes.search(query, { locale, limit: 30 });
+    if (request !== state.recipeRequest) return;
+    const recipes = result.data.filter(r => Number.isSafeInteger(r.product?.item) && Number.isSafeInteger(r.product?.count) && r.product.count > 0 && Array.isArray(r.reagents) && r.reagents.length && r.reagents.every(x => Array.isArray(x) && Number.isSafeInteger(x[0]) && x[0] > 0 && Number.isSafeInteger(x[1]) && x[1] > 0));
+    const ids = [...new Set(recipes.flatMap(r => [r.product.item, ...r.reagents.map(x => x[0])]))];
+    for (let i = 0; i < ids.length; i += 50) {
+      const items = await api.Items.getMany(ids.slice(i, i + 50), { locale });
+      if (request !== state.recipeRequest) return;
+      for (const item of items.data || []) if (item.name) state.names[String(item.id)] = { name: item.name };
+    }
+    if (request !== state.recipeRequest) return;
+    $('recipe-results').innerHTML = recipes.length ? `<p>Build ${escape(result.source?.build || result.dataset)} · ${escape(String(recipes.length))} results / результатов${result.nextCursor ? ' · refine search / уточните запрос' : ''}</p>` + recipes.map((r, i) => `<button class="recipe-option" data-recipe="${i}"><strong>${escape(r.name || `Recipe #${r.id}`)}</strong><span>${r.reagents.length} ingredients / реагентов · ×${r.product.count}</span></button>`).join('') : '<p>No complete craftable recipes found. Try another name or English. / Готовых рецептов не найдено. Попробуйте другое название или английский.</p>';
+    $('recipe-results').querySelectorAll('[data-recipe]').forEach(button => button.addEventListener('click', () => {
+      const recipe = recipes[Number(button.dataset.recipe)];
+      // Replacing the basket is explicit in the button's surrounding instructions.
+      state.basket = Object.fromEntries(recipe.reagents.map(([id, qty]) => [String(id), qty]));
+      safeWrite('fm-basket', state.basket);
+      state.recipeOutput = String(recipe.product.item);
+      $('craft-count').value = recipe.product.count;
+      renderBasket();
+      $('recipe-results').innerHTML = `<p>✓ ${escape(recipe.name || `Recipe #${recipe.id}`)} · ${escape(result.source?.build || result.dataset)}. Ingredients loaded into basket. / Материалы добавлены в корзину.</p>`;
+    }));
+  } catch {
+    if (request === state.recipeRequest) $('recipe-results').textContent = 'Recipe service unavailable. Try again or enter ingredients manually. / Сервис рецептов недоступен. Повторите попытку или введите материалы вручную.';
+  }
+}
+$('recipe-find').addEventListener('click', findRecipes);
+$('recipe-search').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); findRecipes(); } });
 $('quote-qty').addEventListener('input', renderDetail);
-for (const id of ['craft-output','craft-count','craft-fee']) $(id).addEventListener('change', renderBasket);
+$('craft-output').addEventListener('change', () => { state.recipeOutput = $('craft-output').value; renderBasket(); });
+for (const id of ['craft-count','craft-fee']) $(id).addEventListener('change', renderBasket);
 $('basket-add').addEventListener('click', () => { if (!state.selected || !state.summary?.items[state.selected]) return; state.basket[state.selected] = (state.basket[state.selected] || 0) + 1; safeWrite('fm-basket', state.basket); renderBasket(); });
 $('detail-favorite').addEventListener('click', () => toggleFavorite(state.selected));
 $('market-tab').addEventListener('click', () => changeView(false)); $('favorites-tab').addEventListener('click', () => changeView(true));

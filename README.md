@@ -1,102 +1,77 @@
 # Forever Market
 
-Русскоязычный трекер аукциона **Blizzard World of Warcraft: Forever**. Статический сайт без npm-зависимостей, серверов и платной базы данных.
+An auction-house companion for **World of Warcraft: Forever**. Browse listings, follow prices over time, plan a shopping basket, and compare crafting costs with buying the finished item.
 
-## Что работает
+The interface supports English and Russian and works on desktop and mobile. It is an independent fan project, not affiliated with Blizzard Entertainment.
 
-- EU, US, KR и TW; рулсеты и аукционы обнаруживаются через Blizzard API, без жёстко заданного списка в рабочем режиме.
-- Поиск по названию и ID, сортировка цены и объёма, избранное в браузере, экспорт текущей выборки в CSV.
-- Минимальный выкуп за штуку, медиана с весом по количеству, число единиц и лотов.
-- График и таблица: почасовые наблюдения за последние 7 дней, последние дневные наблюдения за 90 дней. Пропуски сбора не соединяются линией.
-- Периоды 24 часа / 7 / 30 / 90 дней; минимальная цена или медиана.
-- Последний успешный снимок сохраняется при сбоях; время снимка всегда видно. Старше 3 часов помечается как старый.
-- Отдельный **явно обозначенный деморежим** с вымышленными ценами. Демо никогда не смешивается с реальной историей.
+## What you can do
 
-**Текущий статус:** код интеграции реализован и проверен на тестовых ответах. Реальные запросы с Battle.net credentials не проверены: ключи не предоставлены. Недокументированные маршруты могут потребовать корректировки после первого запуска.
+- Choose a region, ruleset and auction house; search items by name or ID, sort prices and save favorites.
+- See the lowest buyout, quantity-weighted median, available units and listing count.
+- Explore hourly price history for seven days and daily history for 90 days, with a chart and a table of observations.
+- Compare the current minimum with recent snapshots and find hours that have historically had higher listed prices.
+- Build a shopping basket and estimate the cost of buying a requested quantity from the available listings.
+- Search a recipe, load its ingredients into the basket, and compare crafting with buying the finished item. You can also enter ingredients manually.
+- Export the current item list as CSV. Favorites and the basket are stored in your browser.
 
-## Бесплатный запуск на GitHub Pages
+Recipe search uses the public [Warcraft Forever data library](https://warcraftforever.com/developers/data/), which reports the source and client build with each response. It is a third-party dataset; missing results do not prove a recipe is absent in game. Selecting a recipe **replaces the current basket**. The calculator only includes ingredients with usable auction data; vendor prices, deposits, cooldowns and crafting fees are not included.
 
-Для бесплатного размещения нужен **публичный репозиторий**. Код и собранные цены будут общедоступны, ключи останутся в Secrets. По документации GitHub, Pages доступен на GitHub Free для публичных репозиториев; стандартные Linux runners Actions в публичных репозиториях бесплатны. Есть ограничения объёма, частоты и использования; условия хостинга могут меняться.
+## Reading the numbers
 
-1. Создайте API-клиент на [Battle.net Developer Portal](https://develop.battle.net/access/clients). Сборщик использует `client_credentials`; авторизация игрока и доступ к его персонажам не нужны. Если форма требует Redirect URL, для этого потока он не используется; укажите адрес своего сайта.
-2. Загрузите этот проект в публичный репозиторий GitHub с основной веткой `main`.
-3. Откройте **Settings → Secrets and variables → Actions → New repository secret** и добавьте:
+Prices describe **active listings**, not confirmed sales. The cheapest item can be a single unusually priced listing. The quantity estimator takes offers in unit-price order and buys whole ordinary stacks; it can buy extra and does not guarantee the cheapest combination. Commodity listings are treated as divisible. Prices can change before you reach the auction house.
+
+The craft comparison uses the current minimum price of the output as a hypothetical sale price and applies the fee you enter. It is not a guarantee that the item will sell. Item variants sharing an ID are grouped together.
+
+The hour comparison needs at least three observations at the same UTC hour in the last seven days. It is based on listing minima, not sales. History starts accumulating when your collector first runs: existing historical prices are not imported.
+
+## Run it on GitHub Pages
+
+The static site and scheduled collector can run on GitHub Free in a **public** repository. GitHub Pages and standard hosted Actions runners have usage limits, so check GitHub's current terms if your traffic or data grows.
+
+1. Create a Battle.net API client in the [Developer Portal](https://community.developer.battle.net/access/clients). The collector uses client credentials; visitors do not need to sign in to Battle.net.
+2. Add two **repository secrets** under **Settings → Secrets and variables → Actions**:
    - `BNET_CLIENT_ID`
    - `BNET_CLIENT_SECRET`
-4. В **Settings → Pages → Build and deployment → Source** выберите **GitHub Actions**.
-5. В **Actions → Collect & publish → Run workflow** запустите сбор и публикацию. Ссылка будет в результате задания `deploy`.
+3. In **Settings → Pages**, set the source to **GitHub Actions**.
+4. Open **Actions → Collect & publish**, select **Run workflow**, and wait for the deploy job. The job displays the site URL.
 
-Без ключей workflow публикует сайт в демонстрационном режиме. После добавления Secrets снова запустите workflow; успешный сбор переключит сайт на реальные данные. История начинает накапливаться с первого запуска; прошлых цен этот проект не восстанавливает.
+Keep the Client Secret in GitHub Secrets. Do not add it to the repository or enter it on the site.
 
-Сбор запускается на 23-й минуте каждого часа. Это расписание запуска сборщика, а не обещание, что Blizzard обновляет данные каждый час. GitHub может задержать или пропустить запуски при высокой нагрузке. В публичных репозиториях расписание может отключиться после 60 дней без активности в исходном репозитории — проверьте Actions, если сбор остановился.
+Without credentials, the workflow publishes an explicitly labelled demo with fictional prices. After adding the secrets, rerun the workflow. The real Blizzard integration uses currently undocumented Forever endpoints and has not yet been verified with live credentials; endpoints or their responses may change.
 
-Имена запрашиваются постепенно: до 300 неизвестных предметов за запуск. Если Blizzard не возвращает название, отображается ID; отсутствующие названия повторно проверяются раз в неделю. Рабочие названия приходят на английском (`en_US`); демо содержит русские примеры. Поиск поддерживает отображаемое название и ID.
+The collector runs at minute 23 of every hour. GitHub may delay or skip scheduled runs. Each market shows its actual snapshot time and marks old data; failed requests preserve the last successful snapshot. A scheduled workflow in a public repository can be disabled after a period of repository inactivity.
 
-Китай не входит в эту интеграцию: для него нужна отдельная платформа и отдельные credentials.
+EU, US, KR and TW are supported. China uses a separate platform and is not connected. The API currently may return identical houses for different rulesets; the interface includes house IDs so you can distinguish the feeds without assuming they are separate markets.
 
-## История и стоимость хранения
+## Run locally
 
-Workflow хранит `data/` в отдельной ветке `market-data`, а на Pages выкладывает только статическую сборку. История не зависит от браузера и сохраняется между запусками. Ключи не записываются в файлы, артефакты или клиентский JavaScript.
+Requirements: Node.js 22+ and Python 3.12+. There are no third-party project dependencies.
 
-Хранятся сводки, а не сырые многомегабайтные ответы Blizzard. При большом числе рынков история всё равно может вырасти; сборка останавливается при 900 MiB, до лимита Pages в 1 GiB. В таком случае сократите окна в `update_history()` или список регионов в workflow. Ветка данных хранит также Git-историю изменений; отслеживайте размер репозитория. Это решение для личного трекера и умеренного объёма, без гарантии бесконечного бесплатного хранения.
-
-Не удаляйте `market-data`, если хотите сохранить наблюдения. Для резервной копии скачайте эту ветку.
-
-## Локальная проверка
-
-Нужны Node.js 22+ и Python 3.12+. Сторонние зависимости отсутствуют.
-
-```sh
+```bash
 npm test
 npm run build
 python3 -m http.server 3000 --directory dist
 ```
 
-Откройте `http://localhost:3000`. Пока `web/data/index.json` пуст, сайт показывает явно помеченное демо.
+Open `http://localhost:3000`. An empty data directory opens the demo. To collect real prices locally, provide `BNET_CLIENT_ID` and `BNET_CLIENT_SECRET` through your environment, then run:
 
-Для реального сбора задайте переменные окружения через ваш менеджер секретов или оболочку, затем:
-
-```sh
+```bash
 python3 scripts/collect.py
 npm run build
 ```
 
-Обязательные переменные — `BNET_CLIENT_ID`, `BNET_CLIENT_SECRET`. Опциональные — `REGIONS` (по умолчанию `eu,us,kr,tw`), `MAX_NAME_LOOKUPS` (по умолчанию `300`). `.env.example` — только список имён; автоматической загрузки `.env` нет. Не коммитьте ключи.
+Optional variables: `REGIONS` defaults to `eu,us,kr,tw`; `MAX_NAME_LOOKUPS` defaults to `300`. Names are loaded gradually and can remain as item IDs when Blizzard does not provide them. `.env.example` documents variable names; the collector does not automatically load an `.env` file.
 
-Если сайт и сборщик размещены отдельно, в «Подключении» укажите HTTPS-адрес папки `data/` рабочего сайта. GitHub Pages обычно подходит как источник. Адрес должен разрешать CORS. API-ключ в интерфейсе вводить не требуется.
+## Data and maintenance
 
-## Как считаются цены
+The collector writes market summaries and price history to `web/data/`. GitHub Actions persists this data in a separate `market-data` branch between runs and deploys the static site from `dist/`. Back up that branch if the history matters to you. Git history can grow even though the application keeps seven days of hourly and 90 days of daily observations. The workflow stops if the built artifact reaches 900 MiB; reduce retention or region coverage if needed.
 
-- Обычный лот: `buyout / quantity`. Ресурс: `unit_price`.
-- Лоты без цены выкупа и с нулевым количеством исключаются.
-- Минимум — самая низкая цена за штуку. Медиана — цена, на которой накопленное количество достигает половины всего предложения (нижняя взвешенная медиана).
-- Варианты с разными бонусами объединяются по `item.id`. Цена конкретного суффикса может отличаться.
-- Цена выставленного лота не доказывает продажу. Изменение графика — сравнение первого и последнего наблюдения выбранной метрики в периоде.
-- Дневная точка — последний успешный снимок дня UTC, не дневная медиана, не средняя цена сделок. Текущий день ещё может меняться.
-- Повторный запуск в том же часу заменяет почасовую точку. Нет выдуманных нулей для пропусков.
+Listing depth is available only in snapshots collected after the depth feature was added. Older snapshots can still appear in the price chart but cannot produce a quantity quote. Recipe lookups happen in the browser against Warcraft Forever; the manual basket remains available when that service is unreachable. English item names from Blizzard are used when localized names are unavailable.
 
-## API и ограничения
+## Sources
 
-Используются недокументированные маршруты Blizzard:
+- [Blizzard Forever API community notes](https://us.forums.blizzard.com/en/blizzard/t/wow-forever-api-what-works-so-far-plus-a-ts-client/60334)
+- [Warcraft Forever game data library](https://warcraftforever.com/developers/data/)
+- [GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages) and [Actions billing](https://docs.github.com/en/actions/concepts/billing-and-usage)
 
-```text
-GET /data/wow/ruleset/index
-GET /data/wow/ruleset/{id}/auctions/
-GET /data/wow/ruleset/{id}/auctions/{houseId}
-GET /data/wow/ruleset/{id}/auctions/{houseId}/commodities
-GET /data/wow/item/{itemId}
-```
-
-Namespace: `dynamic-forever-{region}` для рынка, `static-forever-{region}` для названий. OAuth: `https://oauth.battle.net/token`. Ключи остаются в процессе сборщика.
-
-По наблюдениям сообщества, некоторые рулсеты сейчас возвращают одинаковые аукционы. Приложение не считает их разными рынками в общей сумме: общей межрулсетной суммы здесь вообще нет. Каждый выбор получает свои данные; совпадающие канонические URL переиспользуются, разные URL не объединяются. Не следует выводить соответствие рулсетам из одинаковых названий аукционов — для этого в интерфейсе есть ID.
-
-## Источники
-
-- [Наблюдения автора blizzard_api и обновление аукционов от 6 ноября 2026](https://us.forums.blizzard.com/en/blizzard/t/wow-forever-api-what-works-so-far-plus-a-ts-client/60334)
-- [Открытый пример интеграции с API](https://github.com/cnanas/Wow-Forever-Auction)
-- [GitHub Pages и доступность на Free](https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages)
-- [Стоимость стандартных runners Actions](https://docs.github.com/en/actions/concepts/billing-and-usage)
-- [Лимиты GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits)
-
-Неофициальный проект. Не связан с Blizzard Entertainment. Названия игр и предметов принадлежат их владельцам.
+Code is available under the [MIT License](LICENSE). World of Warcraft and related marks belong to Blizzard Entertainment.
