@@ -1,93 +1,29 @@
-name: Collect & publish
-on:
-  workflow_dispatch:
-  schedule:
-    - cron: '23 * * * *'
-  push:
-    branches: [main]
+name: Blizzard metadata check
+on: workflow_dispatch
 permissions:
-  contents: write
-  pages: write
-  id-token: write
-concurrency:
-  group: forever-market-publish
-  cancel-in-progress: false
+  contents: read
 jobs:
-  collect:
+  check:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Test collector and frontend utilities
-        run: npm test
-      - name: Check Blizzard configuration
-        id: config
+      - name: Check live Blizzard metadata
         env:
           BNET_CLIENT_ID: ${{ secrets.BNET_CLIENT_ID }}
           BNET_CLIENT_SECRET: ${{ secrets.BNET_CLIENT_SECRET }}
         run: |
-          if [ -n "$BNET_CLIENT_ID" ] && [ -n "$BNET_CLIENT_SECRET" ]; then
-            echo 'enabled=true' >> "$GITHUB_OUTPUT"
-          else
-            echo 'enabled=false' >> "$GITHUB_OUTPUT"
-            echo 'Blizzard Secrets are missing. Publishing the explicitly labeled demo.'
-          fi
-      - name: Restore persistent market history
-        if: steps.config.outputs.enabled == 'true'
-        shell: bash
-        run: |
-          if git fetch origin market-data --depth=1; then
-            git worktree add --detach "$RUNNER_TEMP/market-state" FETCH_HEAD
-            if [ -d "$RUNNER_TEMP/market-state/data" ]; then
-              cp -a "$RUNNER_TEMP/market-state/data/." web/data/
-            fi
-          else
-            git worktree add --detach "$RUNNER_TEMP/market-state"
-            git -C "$RUNNER_TEMP/market-state" switch --orphan market-data
-          fi
-      - name: Collect Blizzard data
-        if: steps.config.outputs.enabled == 'true'
-        env:
-          BNET_CLIENT_ID: ${{ secrets.BNET_CLIENT_ID }}
-          BNET_CLIENT_SECRET: ${{ secrets.BNET_CLIENT_SECRET }}
-          REGIONS: eu,us,kr,tw
-          MAX_NAME_LOOKUPS: '300'
-        run: python3 scripts/collect.py
-      - name: Persist history to a separate data branch
-        if: steps.config.outputs.enabled == 'true'
-        shell: bash
-        run: |
-          mkdir -p "$RUNNER_TEMP/market-state/data"
-          cp -a web/data/. "$RUNNER_TEMP/market-state/data/"
-          git -C "$RUNNER_TEMP/market-state" config user.name 'github-actions[bot]'
-          git -C "$RUNNER_TEMP/market-state" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git -C "$RUNNER_TEMP/market-state" add data
-          if ! git -C "$RUNNER_TEMP/market-state" diff --cached --quiet; then
-            git -C "$RUNNER_TEMP/market-state" commit -m 'Update auction snapshots and history'
-            git -C "$RUNNER_TEMP/market-state" push origin HEAD:market-data
-          fi
-      - name: Build static site
-        run: npm run build
-      - name: Check Pages artifact size
-        run: |
-          python3 -c "from pathlib import Path; size=sum(p.stat().st_size for p in Path('dist').rglob('*') if p.is_file()); print(f'Artifact size {size / 1024**2:.1f} MiB'); assert size < 900 * 1024**2, 'Approaching GitHub Pages size limit. Reduce history retention or regions.'"
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
-  deploy:
-    needs: collect
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          python - <<'PY'
+          from scripts.collect import Blizzard, localized_name
+          api = Blizzard()
+          for rule in (1, 2, 3, 15):
+              data = api.get('eu', f'/data/wow/ruleset/{rule}', optional=True)
+              print('ruleset', rule, 'name:', localized_name((data or {}).get('name')) or 'missing')
+          for item_id in (25, 720, 13463):
+              item = api.get('eu', f'/data/wow/item/{item_id}', 'static', optional=True)
+              media = api.get('eu', f'/data/wow/media/item/{item_id}', 'static', optional=True)
+              icons = [a for a in (media or {}).get('assets', []) if a.get('key') == 'icon' and a.get('value', '').startswith('https://')]
+              print('item', item_id, 'name:', localized_name((item or {}).get('name')) or 'missing', 'icon:', bool(icons))
+          PY

@@ -13,7 +13,7 @@ const state = {
   days: 7, metric: 0, demo: false, source: safeRead('fm-source', ''), index: null, names: {}, summary: null, history: null,
   recipeOutput: '', recipeRequest: 0, loading: false, request: 0, error: '', basket: safeRead('fm-basket', {}),
 };
-const PAGE_SIZE = 9;
+const PAGE_SIZE = 20;
 const regionNames = { eu: 'Европа · EU', us: 'Америка · US', kr: 'Корея · KR', tw: 'Тайвань · TW' };
 const escape = value => String(value).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
 const number = value => new Intl.NumberFormat('ru-RU').format(value);
@@ -27,7 +27,7 @@ function getRegion() { return state.index?.regions.find(region => region.id === 
 function getRule() { return getRegion()?.rulesets.find(rule => String(rule.id) === state.ruleset); }
 function getHouse() { return getRule()?.houses.find(house => String(house.id) === state.house); }
 function nameOf(id) { const name = state.names[id]?.name || `Предмет #${id}`; return document.documentElement.lang === 'en' ? english(name) : name; }
-function iconOf(id) { return state.names[id]?.icon || ['◆', '✧', '▰', '❧'][Number(id) % 4]; }
+function iconOf(id) { const icon = state.names[id]?.icon; return typeof icon === 'string' && /^https:\/\//.test(icon) ? `<img src="${escape(icon)}" alt="" loading="lazy">` : '<span aria-hidden="true">?</span>'; }
 function selectionSaved() {
   safeWrite('fm-selection', { region: state.region, ruleset: state.ruleset, house: state.house });
   const params = new URLSearchParams({ region: state.region, ruleset: state.ruleset, house: state.house });
@@ -144,7 +144,7 @@ function renderTable() {
   const start = (state.page - 1) * PAGE_SIZE;
   $('filtered-count').textContent = number(items.length);
   $('items-heading').firstChild.textContent = state.favoritesOnly ? 'Избранные предметы ' : 'Все предметы ';
-  $('items-body').innerHTML = items.slice(start, start + PAGE_SIZE).map(([id, values]) => `<tr data-id="${escape(id)}" class="${state.selected === id ? 'selected' : ''}" aria-selected="${state.selected === id}"><td><div class="item-cell"><span class="item-art" data-tone="${Number(id) % 4}" aria-hidden="true">${escape(iconOf(id))}</span><div><button class="item-name quiet" data-select="${escape(id)}">${escape(nameOf(id))}</button><span class="item-id">ID ${escape(id)}</span></div></div></td><td>${money(values[0])}</td><td class="volume-col muted">${number(values[2])}</td><td><button class="favorite ${state.favorites.has(id) ? 'saved' : ''}" data-favorite="${escape(id)}" aria-label="${state.favorites.has(id) ? 'Убрать из избранного' : 'В избранное'}: ${escape(nameOf(id))}" aria-pressed="${state.favorites.has(id)}">${state.favorites.has(id) ? '★' : '☆'}</button></td></tr>`).join('');
+  $('items-body').innerHTML = items.slice(start, start + PAGE_SIZE).map(([id, values]) => `<tr data-id="${escape(id)}" class="${state.selected === id ? 'selected' : ''}" aria-selected="${state.selected === id}"><td><div class="item-cell"><span class="item-art" data-tone="${Number(id) % 4}" aria-hidden="true">${iconOf(id)}</span><div><button class="item-name quiet" data-select="${escape(id)}">${escape(nameOf(id))}</button><span class="item-id">ID ${escape(id)}</span></div></div></td><td>${money(values[0])}</td><td class="volume-col muted">${number(values[2])}</td><td><button class="favorite ${state.favorites.has(id) ? 'saved' : ''}" data-favorite="${escape(id)}" aria-label="${state.favorites.has(id) ? 'Убрать из избранного' : 'В избранное'}: ${escape(nameOf(id))}" aria-pressed="${state.favorites.has(id)}">${state.favorites.has(id) ? '★' : '☆'}</button></td></tr>`).join('');
   $('items-body').querySelectorAll('tr').forEach(row => row.addEventListener('click', event => { if (event.target.closest('[data-favorite]')) return; state.selected = row.dataset.id; selectionSaved(); renderTable(); renderDetail(); }));
   $('items-body').querySelectorAll('[data-favorite]').forEach(button => button.addEventListener('click', () => toggleFavorite(button.dataset.favorite)));
   $('empty-state').hidden = !!items.length;
@@ -195,7 +195,7 @@ function renderDetail() {
   const id = state.selected, values = state.summary?.items[id];
   $('detail-name').textContent = values ? nameOf(id) : 'Выберите предмет';
   $('detail-id').textContent = values ? `ID ${id} · ${getHouse()?.name || ''} · #${state.house}` : 'Его история появится здесь';
-  $('detail-icon').textContent = iconOf(id || '0'); $('detail-icon').dataset.tone = String(Number(id || 0) % 4);
+  $('detail-icon').innerHTML = iconOf(id || '0'); $('detail-icon').dataset.tone = String(Number(id || 0) % 4);
   $('detail-price').innerHTML = money(values?.[0]); $('median-price').innerHTML = money(values?.[1]);
   $('detail-volume').textContent = values ? number(values[2]) : '—';
   $('detail-favorite').disabled = !values;

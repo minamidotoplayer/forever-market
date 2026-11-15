@@ -10,6 +10,20 @@ spec.loader.exec_module(collector)
 
 
 class CollectorTest(unittest.TestCase):
+    def test_ruleset_name_and_item_media(self):
+        class API:
+            def get(self, region, path, namespace='dynamic', optional=False, locale='en_US'):
+                if path.endswith('/ruleset/index'): return {'rulesets': [{'id': 1}]}
+                if path.endswith('/ruleset/1'): return {'name': 'PvP'}
+                if path.endswith('/auctions/'): return {'auctions': [{'id': 110, 'name': 'Alliance'}]}
+                if path.endswith('/commodities'): return {'auctions': []}
+                if '/media/' in path: return {'assets': [{'key': 'icon', 'value': 'https://render.worldofwarcraft.com/icon.jpg'}]}
+                if namespace == 'static': return {'name': 'Sword'}
+                return {'auctions': [{'item': {'id': 42}, 'quantity': 1, 'buyout': 100}]}
+        with tempfile.TemporaryDirectory() as directory, patch.object(collector, 'ROOT', Path(directory)):
+            collector.collect(API(), ['eu'])
+            self.assertEqual(collector.read_json(Path(directory) / 'index.json', {})['regions'][0]['rulesets'][0]['name'], 'PvP')
+            self.assertEqual(collector.read_json(Path(directory) / 'items.json', {})['42']['icon'], 'https://render.worldofwarcraft.com/icon.jpg')
     def test_unit_price_and_quantity_weighted_median(self):
         offers = [
             {'item': {'id': 1}, 'quantity': 100, 'buyout': 10000},

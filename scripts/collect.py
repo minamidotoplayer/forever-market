@@ -142,7 +142,11 @@ def collect(api, regions):
             entry = {'id': region, 'rulesets': []}
             for rule in rulesets:
                 rule_id = int(rule['id'])
-                rule_entry = {'id': rule_id, 'name': localized_name(rule.get('name')) or str(rule_id), 'houses': []}
+                rule_name = localized_name(rule.get('name'))
+                if not rule_name:
+                    detail = api.get(region, f'/data/wow/ruleset/{rule_id}', optional=True) or {}
+                    rule_name = localized_name(detail.get('name'))
+                rule_entry = {'id': rule_id, 'name': rule_name or str(rule_id), 'houses': []}
                 houses = api.get(region, f'/data/wow/ruleset/{rule_id}/auctions/', optional=True)
                 if houses is None:
                     rule_entry['unavailable'] = True
@@ -195,12 +199,14 @@ def collect(api, regions):
     if not successful:
         raise RuntimeError('No auction feeds succeeded; keeping previous data. ' + '; '.join(output['errors']))
     # Bound name resolution per run. Missing lookups get an ID fallback and retry in 7 days.
-    pending = [item_id for item_id in sorted(known_ids, key=int) if item_id not in names or (names[item_id].get('missing') and now - names[item_id].get('checkedAt', 0) > 7 * 86400)]
+    pending = [item_id for item_id in sorted(known_ids, key=int) if item_id not in names or 'mediaCheckedAt' not in names[item_id] or (names[item_id].get('missing') and now - names[item_id].get('checkedAt', 0) > 7 * 86400)]
     for item_id in pending[:int(os.environ.get('MAX_NAME_LOOKUPS', '300'))]:
         try:
             item = api.get(regions[0], f'/data/wow/item/{int(item_id)}', 'static', optional=True)
             name = localized_name((item or {}).get('name'))
-            names[item_id] = {'name': name or f'Item #{item_id}', 'checkedAt': now, 'missing': not bool(name)}
+            media = api.get(regions[0], f'/data/wow/media/item/{int(item_id)}', 'static', optional=True) or {}
+            icon = next((asset.get('value') for asset in media.get('assets', []) if asset.get('key') == 'icon' and isinstance(asset.get('value'), str) and asset['value'].startswith('https://')), None)
+            names[item_id] = {'name': name or f'Item #{item_id}', 'checkedAt': now, 'missing': not bool(name), 'icon': icon, 'mediaCheckedAt': now}
         except RuntimeError:
             break
     write_json(ROOT / 'items.json', names)
