@@ -60,7 +60,7 @@ python3 scripts/collect.py
 npm run build
 ```
 
-Optional variables: `REGIONS` defaults to `eu,us,kr,tw`; `MAX_NAME_LOOKUPS` defaults to `300`. Names and icons are loaded gradually. When Blizzard has no item name, the collector tries Wowhead’s Forever tooltip data; items absent from both sources remain as IDs. `.env.example` documents variable names; the collector does not automatically load an `.env` file.
+Optional variables: `REGIONS` defaults to `eu,us,kr,tw`; `MAX_NAME_LOOKUPS` defaults to `300`. Names and icons are loaded gradually. When Blizzard has no item name, the collector tries Wowhead’s Forever tooltip data; items absent from both sources remain as IDs. The browser also requests missing metadata for visible items from Wowhead and caches it locally; search by name only covers names loaded so far. Select an item in the market table to use it as a crafting output. `.env.example` documents variable names; the collector does not automatically load an `.env` file.
 
 ## Data and maintenance
 

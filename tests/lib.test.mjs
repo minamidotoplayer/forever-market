@@ -1,6 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { moneyParts, historyPoints, filterItems, csvValue, sourceUrl } from '../web/lib.js';
+import { itemMetadata, craftOutputChoices } from '../web/lib.js';
+test('tooltip metadata safely supplies item names and icon URLs', () => {
+  assert.deepEqual(itemMetadata({name: 'Brawler Gloves', icon: 'inv_gauntlets_05'}), {name: 'Brawler Gloves', icon: 'https://wow.zamimg.com/images/wow/icons/medium/inv_gauntlets_05.jpg'});
+  assert.deepEqual(itemMetadata({name: 'Known', icon: '../bad'}), {name: 'Known', icon: null});
+  assert.equal(itemMetadata({name: ''}), null);
+});
+test('craft output choices stay bounded to selected and recipe items', () => {
+  assert.deepEqual(craftOutputChoices('42', '43'), ['43', '42']);
+  assert.deepEqual(craftOutputChoices('42', '42'), ['42']);
+  assert.deepEqual(craftOutputChoices('', ''), []);
+});
 test('prices preserve copper and carry at rounding boundaries', () => {
   assert.deepEqual(moneyParts(123456), { gold: 12, silver: 34, copper: 56 });
   assert.deepEqual(moneyParts(9999.8), { gold: 1, silver: 0, copper: 0 });

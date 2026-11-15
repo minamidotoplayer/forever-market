@@ -1,5 +1,5 @@
 import { initLanguage, english } from './i18n.js';
-import { moneyParts, moneyText, historyPoints, filterItems, csvValue, sourceUrl, quoteDepth, bestHours } from './lib.js';
+import { moneyParts, moneyText, historyPoints, filterItems, csvValue, sourceUrl, quoteDepth, bestHours, itemMetadata, craftOutputChoices } from './lib.js';
 import { demoData, demoIndex } from './demo.js';
 const $ = id => document.getElementById(id);
 const safeRead = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } };
@@ -14,6 +14,9 @@ const state = {
   recipeOutput: '', recipeRequest: 0, loading: false, request: 0, error: '', basket: safeRead('fm-basket', {}),
 };
 const PAGE_SIZE = 20;
+const tooltipCache = safeRead('fm-tooltip-cache', {});
+const tooltipPending = new Set();
+const tooltipFailed = new Set();
 const regionNames = { eu: 'Европа · EU', us: 'Америка · US', kr: 'Корея · KR', tw: 'Тайвань · TW' };
 const escape = value => String(value).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
 const number = value => new Intl.NumberFormat('ru-RU').format(value);
@@ -28,6 +31,36 @@ function getRule() { return getRegion()?.rulesets.find(rule => String(rule.id) =
 function getHouse() { return getRule()?.houses.find(house => String(house.id) === state.house); }
 function nameOf(id) { const name = state.names[id]?.name || `Предмет #${id}`; return document.documentElement.lang === 'en' ? english(name) : name; }
 function iconOf(id) { const icon = state.names[id]?.icon; return typeof icon === 'string' && /^https:\/\//.test(icon) ? `<img src="${escape(icon)}" alt="" loading="lazy">` : '<span aria-hidden="true">?</span>'; }
+async function loadVisibleMetadata(ids) {
+  if (state.demo) return;
+  const queue = [...new Set(ids)].filter(id => /^\d+$/.test(id) && (!state.names[id] || state.names[id].missing || !state.names[id].icon) && !tooltipPending.has(id) && !tooltipFailed.has(id));
+  queue.forEach(id => tooltipPending.add(id));
+  async function worker() {
+    while (queue.length) {
+      const id = queue.shift();
+      try {
+        let meta = tooltipCache[id];
+        if (!meta) {
+          const response = await fetch(`https://nether.wowhead.com/forever/tooltip/item/${id}`, {signal: AbortSignal.timeout(10000)});
+          if (!response.ok) throw new Error('metadata unavailable');
+          meta = itemMetadata(await response.json());
+          if (!meta) throw new Error('metadata missing');
+          tooltipCache[id] = meta;
+        }
+        const previous = state.names[id] || {};
+        state.names[id] = {...previous, name: !previous.name || previous.missing ? meta.name : previous.name, missing: false, icon: previous.icon || meta.icon};
+        const row = $('items-body').querySelector(`tr[data-id="${id}"]`);
+        if (row) { row.querySelector('[data-select]').textContent = nameOf(id); row.querySelector('.item-art').innerHTML = iconOf(id); }
+        if (state.selected === id) { $('detail-name').textContent = nameOf(id); $('detail-icon').innerHTML = iconOf(id); }
+      } catch { tooltipFailed.add(id); }
+      finally { tooltipPending.delete(id); }
+    }
+  }
+  await Promise.all(Array.from({length: Math.min(4, queue.length)}, worker));
+  const keys = Object.keys(tooltipCache);
+  if (keys.length > 1000) keys.slice(0, keys.length - 1000).forEach(key => delete tooltipCache[key]);
+  safeWrite('fm-tooltip-cache', tooltipCache);
+}
 function selectionSaved() {
   safeWrite('fm-selection', { region: state.region, ruleset: state.ruleset, house: state.house });
   const params = new URLSearchParams({ region: state.region, ruleset: state.ruleset, house: state.house });
@@ -145,6 +178,7 @@ function renderTable() {
   $('filtered-count').textContent = number(items.length);
   $('items-heading').firstChild.textContent = state.favoritesOnly ? 'Избранные предметы ' : 'Все предметы ';
   $('items-body').innerHTML = items.slice(start, start + PAGE_SIZE).map(([id, values]) => `<tr data-id="${escape(id)}" class="${state.selected === id ? 'selected' : ''}" aria-selected="${state.selected === id}"><td><div class="item-cell"><span class="item-art" data-tone="${Number(id) % 4}" aria-hidden="true">${iconOf(id)}</span><div><button class="item-name quiet" data-select="${escape(id)}">${escape(nameOf(id))}</button><span class="item-id">ID ${escape(id)}</span></div></div></td><td>${money(values[0])}</td><td class="volume-col muted">${number(values[2])}</td><td><button class="favorite ${state.favorites.has(id) ? 'saved' : ''}" data-favorite="${escape(id)}" aria-label="${state.favorites.has(id) ? 'Убрать из избранного' : 'В избранное'}: ${escape(nameOf(id))}" aria-pressed="${state.favorites.has(id)}">${state.favorites.has(id) ? '★' : '☆'}</button></td></tr>`).join('');
+  loadVisibleMetadata([...items.slice(start, start + PAGE_SIZE).map(([id]) => id), state.selected]);
   $('items-body').querySelectorAll('tr').forEach(row => row.addEventListener('click', event => { if (event.target.closest('[data-favorite]')) return; state.selected = row.dataset.id; selectionSaved(); renderTable(); renderDetail(); }));
   $('items-body').querySelectorAll('[data-favorite]').forEach(button => button.addEventListener('click', () => toggleFavorite(button.dataset.favorite)));
   $('empty-state').hidden = !!items.length;
@@ -180,9 +214,8 @@ function renderBasket() {
 function renderCraft(entries, ingredientCost, missing) {
   const select = $('craft-output');
   const previous = state.recipeOutput || select.value || state.selected;
-  const ids = Object.keys(state.summary?.items || {});
-  const outputIds = ids.includes(previous) || !previous ? ids : [previous, ...ids];
-  options('craft-output', outputIds.map(id => [id, `${nameOf(id)} (#${id})${ids.includes(id) ? '' : ' — no listing / нет лотов'}`]), outputIds.includes(previous) ? previous : state.selected);
+  const outputIds = craftOutputChoices(state.selected, previous);
+  options('craft-output', outputIds.map(id => [id, `${nameOf(id)} (#${id})${state.summary?.items[id] ? '' : ' — no listing / нет лотов'}`]), outputIds.includes(previous) ? previous : state.selected);
   const count = Number($('craft-count').value), fee = Number($('craft-fee').value), output = state.summary?.items[select.value];
   if (!entries.length || missing || !output || !Number.isInteger(count) || count < 1 || count > 10000 || !Number.isFinite(fee) || fee < 0 || fee > 100) {
     $('craft-result').textContent = 'Add available ingredients, choose an output, and enter valid quantities. Requires current listing data. / Добавьте доступные материалы, выберите результат и проверьте количество. Требуются данные лотов.'; return;

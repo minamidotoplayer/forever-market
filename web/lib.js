@@ -3,6 +3,14 @@ export function moneyParts(value) {
   const copper = Math.round(Number(value));
   return { gold: Math.floor(copper / 10000), silver: Math.floor(copper % 10000 / 100), copper: copper % 100 };
 }
+export function itemMetadata(data) {
+  if (!data || typeof data.name !== 'string' || !data.name.trim()) return null;
+  const icon = typeof data.icon === 'string' && /^[a-z0-9_]+$/i.test(data.icon) ? `https://wow.zamimg.com/images/wow/icons/medium/${data.icon}.jpg` : null;
+  return {name: data.name, icon};
+}
+export function craftOutputChoices(selected, recipe) {
+  return [...new Set([recipe, selected].filter(id => /^\d+$/.test(id || '')))];
+}
 export function moneyText(value) {
   const p = moneyParts(value);
   return p ? `${p.gold}g ${p.silver}s ${p.copper}c` : '—';
@@ -12,11 +20,12 @@ export function historyPoints(history, id, days, now) {
   return Object.entries(source || {}).map(([time, items]) => ({ time: Number(time), values: items[id] || null }))
     .filter(p => p.time >= now - days * 86400).sort((a, b) => a.time - b.time);
 }
+const itemNameCollator = new Intl.Collator('ru', {numeric: true});
 export function filterItems(items, names, query, favorites, favoritesOnly, sortKey, direction) {
   const search = query.trim().toLocaleLowerCase();
   return Object.entries(items || {}).filter(([id]) => (!favoritesOnly || favorites.has(id)) && (!search || id.includes(search) || (names[id]?.name || '').toLocaleLowerCase().includes(search)))
     .sort(([a, av], [b, bv]) => {
-      const result = sortKey === 'price' ? av[0] - bv[0] : sortKey === 'volume' ? av[2] - bv[2] : (names[a]?.name || a).localeCompare(names[b]?.name || b, 'ru', { numeric: true });
+      const result = sortKey === 'price' ? av[0] - bv[0] : sortKey === 'volume' ? av[2] - bv[2] : itemNameCollator.compare(names[a]?.name || a, names[b]?.name || b);
       return (result || Number(a) - Number(b)) * direction;
     });
 }
