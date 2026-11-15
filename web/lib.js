@@ -6,10 +6,21 @@ export function moneyParts(value) {
 export function itemMetadata(data) {
   if (!data || typeof data.name !== 'string' || !data.name.trim()) return null;
   const icon = typeof data.icon === 'string' && /^[a-z0-9_]+$/i.test(data.icon) ? `https://wow.zamimg.com/images/wow/icons/medium/${data.icon}.jpg` : null;
-  return {name: data.name, icon};
+  const quality = Number.isInteger(data.quality) && data.quality >= 0 && data.quality <= 5 ? data.quality : null;
+  return {name: data.name, icon, quality};
 }
+export function qualityClass(quality) { return Number.isInteger(quality) && quality >= 0 && quality <= 5 ? `quality-${quality}` : ''; }
 export function craftOutputChoices(selected, recipe) {
   return [...new Set([recipe, selected].filter(id => /^\d+$/.test(id || '')))];
+}
+export function groupAuctionHouses(houses) {
+  const groups = new Map();
+  for (const house of houses) {
+    const name = house.name || 'Аукцион';
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push(house);
+  }
+  return [...groups].map(([name, members]) => ({name, houses: members}));
 }
 export function moneyText(value) {
   const p = moneyParts(value);
@@ -23,7 +34,8 @@ export function historyPoints(history, id, days, now) {
 const itemNameCollator = new Intl.Collator('ru', {numeric: true});
 export function filterItems(items, names, query, favorites, favoritesOnly, sortKey, direction) {
   const search = query.trim().toLocaleLowerCase();
-  return Object.entries(items || {}).filter(([id]) => (!favoritesOnly || favorites.has(id)) && (!search || id.includes(search) || (names[id]?.name || '').toLocaleLowerCase().includes(search)))
+  const terms = search ? search.split(/\s+/) : [];
+  return Object.entries(items || {}).filter(([id]) => (!favoritesOnly || favorites.has(id)) && (!terms.length || terms.every(term => id.includes(term) || (names[id]?.name || '').toLocaleLowerCase().includes(term))))
     .sort(([a, av], [b, bv]) => {
       const result = sortKey === 'price' ? av[0] - bv[0] : sortKey === 'volume' ? av[2] - bv[2] : itemNameCollator.compare(names[a]?.name || a, names[b]?.name || b);
       return (result || Number(a) - Number(b)) * direction;

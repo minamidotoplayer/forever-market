@@ -1,5 +1,5 @@
 import { initLanguage, english } from './i18n.js';
-import { moneyParts, moneyText, historyPoints, filterItems, csvValue, sourceUrl, quoteDepth, bestHours, itemMetadata, craftOutputChoices } from './lib.js';
+import { moneyParts, moneyText, historyPoints, filterItems, csvValue, sourceUrl, quoteDepth, bestHours, itemMetadata, craftOutputChoices, groupAuctionHouses, qualityClass } from './lib.js';
 import { demoData, demoIndex } from './demo.js';
 const $ = id => document.getElementById(id);
 const safeRead = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } };
@@ -33,14 +33,14 @@ function nameOf(id) { const name = state.names[id]?.name || `Предмет #${i
 function iconOf(id) { const icon = state.names[id]?.icon; return typeof icon === 'string' && /^https:\/\//.test(icon) ? `<img src="${escape(icon)}" alt="" loading="lazy">` : '<span aria-hidden="true">?</span>'; }
 async function loadVisibleMetadata(ids) {
   if (state.demo) return;
-  const queue = [...new Set(ids)].filter(id => /^\d+$/.test(id) && (!state.names[id] || state.names[id].missing || !state.names[id].icon) && !tooltipPending.has(id) && !tooltipFailed.has(id));
+  const queue = [...new Set(ids)].filter(id => /^\d+$/.test(id) && (!state.names[id] || state.names[id].missing || !state.names[id].icon || state.names[id].quality == null) && !tooltipPending.has(id) && !tooltipFailed.has(id));
   queue.forEach(id => tooltipPending.add(id));
   async function worker() {
     while (queue.length) {
       const id = queue.shift();
       try {
         let meta = tooltipCache[id];
-        if (!meta) {
+        if (!meta || !Object.hasOwn(meta, 'quality')) {
           const response = await fetch(`https://nether.wowhead.com/forever/tooltip/item/${id}`, {signal: AbortSignal.timeout(10000)});
           if (!response.ok) throw new Error('metadata unavailable');
           meta = itemMetadata(await response.json());
@@ -48,10 +48,10 @@ async function loadVisibleMetadata(ids) {
           tooltipCache[id] = meta;
         }
         const previous = state.names[id] || {};
-        state.names[id] = {...previous, name: !previous.name || previous.missing ? meta.name : previous.name, missing: false, icon: previous.icon || meta.icon};
+        state.names[id] = {...previous, name: !previous.name || previous.missing ? meta.name : previous.name, missing: false, icon: previous.icon || meta.icon, quality: previous.quality ?? meta.quality};
         const row = $('items-body').querySelector(`tr[data-id="${id}"]`);
-        if (row) { row.querySelector('[data-select]').textContent = nameOf(id); row.querySelector('.item-art').innerHTML = iconOf(id); }
-        if (state.selected === id) { $('detail-name').textContent = nameOf(id); $('detail-icon').innerHTML = iconOf(id); }
+        if (row) { const label = row.querySelector('[data-select]'); label.textContent = nameOf(id); label.className = `item-name quiet ${qualityClass(state.names[id].quality)}`; row.querySelector('.item-art').innerHTML = iconOf(id); }
+        if (state.selected === id) { $('detail-name').textContent = nameOf(id); $('detail-name').className = qualityClass(state.names[id].quality); $('detail-icon').innerHTML = iconOf(id); }
       } catch { tooltipFailed.add(id); }
       finally { tooltipPending.delete(id); }
     }
@@ -78,12 +78,18 @@ function fillPickers() {
   options('region', regions.map(region => [region.id, regionNames[region.id] || region.id]), state.region);
   const rules = getRegion()?.rulesets || [];
   if (!rules.some(rule => String(rule.id) === state.ruleset)) state.ruleset = String(rules[0]?.id || '');
-  options('ruleset', rules.map(rule => [rule.id, `${rule.name} · #${rule.id}`]), state.ruleset);
+  options('ruleset', rules.map(rule => [rule.id, rule.name]), state.ruleset);
   const houses = getRule()?.houses || [];
   if (!houses.some(house => String(house.id) === state.house)) state.house = String(houses[0]?.id || '');
-  options('house', houses.map(house => [house.id, `${house.name} · #${house.id}`]), state.house);
+  const groups = groupAuctionHouses(houses);
+  const selectedGroup = groups.find(group => group.houses.some(house => String(house.id) === state.house));
+  const translations = {'Alliance Auction House': 'Аукцион Альянса', 'Horde Auction House': 'Аукцион Орды', 'Blackwater Auction House': 'Аукцион Чёрноводья'};
+  options('house', groups.map(group => [group.name, document.documentElement.lang === 'ru' ? (translations[group.name] || group.name) : group.name]), selectedGroup?.name || '');
   if (!houses.length) options('house', [['', 'Пока нет доступных аукционов']], '');
   $('house').disabled = !houses.length;
+  const variants = selectedGroup?.houses || [];
+  options('market-variant', variants.map((house, index) => [house.id, `${document.documentElement.lang === 'ru' ? 'Рынок' : 'Market'} ${String.fromCharCode(65 + index)}`]), state.house);
+  $('market-variant-label').hidden = variants.length < 2;
 }
 async function fetchData(path) {
   const response = await fetch(new URL(path, sourceUrl(state.source)), { cache: 'no-cache', signal: AbortSignal.timeout(30000) });
@@ -177,7 +183,7 @@ function renderTable() {
   const start = (state.page - 1) * PAGE_SIZE;
   $('filtered-count').textContent = number(items.length);
   $('items-heading').firstChild.textContent = state.favoritesOnly ? 'Избранные предметы ' : 'Все предметы ';
-  $('items-body').innerHTML = items.slice(start, start + PAGE_SIZE).map(([id, values]) => `<tr data-id="${escape(id)}" class="${state.selected === id ? 'selected' : ''}" aria-selected="${state.selected === id}"><td><div class="item-cell"><span class="item-art" data-tone="${Number(id) % 4}" aria-hidden="true">${iconOf(id)}</span><div><button class="item-name quiet" data-select="${escape(id)}">${escape(nameOf(id))}</button><span class="item-id">ID ${escape(id)}</span></div></div></td><td>${money(values[0])}</td><td class="volume-col muted">${number(values[2])}</td><td><button class="favorite ${state.favorites.has(id) ? 'saved' : ''}" data-favorite="${escape(id)}" aria-label="${state.favorites.has(id) ? 'Убрать из избранного' : 'В избранное'}: ${escape(nameOf(id))}" aria-pressed="${state.favorites.has(id)}">${state.favorites.has(id) ? '★' : '☆'}</button></td></tr>`).join('');
+  $('items-body').innerHTML = items.slice(start, start + PAGE_SIZE).map(([id, values]) => `<tr data-id="${escape(id)}" class="${state.selected === id ? 'selected' : ''}" aria-selected="${state.selected === id}"><td><div class="item-cell"><span class="item-art" data-tone="${Number(id) % 4}" aria-hidden="true">${iconOf(id)}</span><div><button class="item-name quiet ${qualityClass(state.names[id]?.quality)}" data-select="${escape(id)}">${escape(nameOf(id))}</button><span class="item-id">ID ${escape(id)}</span></div></div></td><td>${money(values[0])}</td><td class="volume-col muted">${number(values[2])}</td><td><button class="favorite ${state.favorites.has(id) ? 'saved' : ''}" data-favorite="${escape(id)}" aria-label="${state.favorites.has(id) ? 'Убрать из избранного' : 'В избранное'}: ${escape(nameOf(id))}" aria-pressed="${state.favorites.has(id)}">${state.favorites.has(id) ? '★' : '☆'}</button></td></tr>`).join('');
   loadVisibleMetadata([...items.slice(start, start + PAGE_SIZE).map(([id]) => id), state.selected]);
   $('items-body').querySelectorAll('tr').forEach(row => row.addEventListener('click', event => { if (event.target.closest('[data-favorite]')) return; state.selected = row.dataset.id; selectionSaved(); renderTable(); renderDetail(); }));
   $('items-body').querySelectorAll('[data-favorite]').forEach(button => button.addEventListener('click', () => toggleFavorite(button.dataset.favorite)));
@@ -227,7 +233,8 @@ function renderCraft(entries, ingredientCost, missing) {
 function renderDetail() {
   const id = state.selected, values = state.summary?.items[id];
   $('detail-name').textContent = values ? nameOf(id) : 'Выберите предмет';
-  $('detail-id').textContent = values ? `ID ${id} · ${getHouse()?.name || ''} · #${state.house}` : 'Его история появится здесь';
+  $('detail-name').className = values ? qualityClass(state.names[id]?.quality) : '';
+  $('detail-id').textContent = values ? `ID ${id} · ${$('house').selectedOptions[0]?.textContent || ''}` : 'Его история появится здесь';
   $('detail-icon').innerHTML = iconOf(id || '0'); $('detail-icon').dataset.tone = String(Number(id || 0) % 4);
   $('detail-price').innerHTML = money(values?.[0]); $('median-price').innerHTML = money(values?.[1]);
   $('detail-volume').textContent = values ? number(values[2]) : '—';
@@ -307,7 +314,8 @@ function changeView(favorites) {
 }
 $('region').addEventListener('change', () => { state.region = $('region').value; fillPickers(); loadMarket(); });
 $('ruleset').addEventListener('change', () => { state.ruleset = $('ruleset').value; fillPickers(); loadMarket(); });
-$('house').addEventListener('change', () => { state.house = $('house').value; loadMarket(); });
+$('house').addEventListener('change', () => { const group = groupAuctionHouses(getRule()?.houses || []).find(entry => entry.name === $('house').value); state.house = String(group?.houses[0]?.id || ''); fillPickers(); loadMarket(); });
+$('market-variant').addEventListener('change', () => { state.house = $('market-variant').value; loadMarket(); });
 $('search').addEventListener('input', () => { state.query = $('search').value; state.page = 1; renderTable(); });
 $('previous').addEventListener('click', () => { state.page--; renderTable(); });
 $('next').addEventListener('click', () => { state.page++; renderTable(); });

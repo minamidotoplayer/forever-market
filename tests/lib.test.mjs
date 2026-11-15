@@ -1,10 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { moneyParts, historyPoints, filterItems, csvValue, sourceUrl } from '../web/lib.js';
-import { itemMetadata, craftOutputChoices } from '../web/lib.js';
+import { itemMetadata, craftOutputChoices, groupAuctionHouses, qualityClass } from '../web/lib.js';
+test('quality color uses known item rarity without inventing unknown values', () => {
+  assert.equal(qualityClass(2), 'quality-2');
+  assert.equal(qualityClass(4), 'quality-4');
+  assert.equal(qualityClass(undefined), '');
+  assert.equal(qualityClass(99), '');
+});
+test('auction groups combine matching names without losing distinct feeds', () => {
+  const groups = groupAuctionHouses([{id: 110, name: 'Alliance'}, {id: 111, name: 'Alliance'}, {id: 113, name: 'Horde'}]);
+  assert.deepEqual(groups.map(group => [group.name, group.houses.map(house => house.id)]), [['Alliance', [110, 111]], ['Horde', [113]]]);
+  assert.deepEqual(groupAuctionHouses([]), []);
+});
 test('tooltip metadata safely supplies item names and icon URLs', () => {
-  assert.deepEqual(itemMetadata({name: 'Brawler Gloves', icon: 'inv_gauntlets_05'}), {name: 'Brawler Gloves', icon: 'https://wow.zamimg.com/images/wow/icons/medium/inv_gauntlets_05.jpg'});
-  assert.deepEqual(itemMetadata({name: 'Known', icon: '../bad'}), {name: 'Known', icon: null});
+  assert.deepEqual(itemMetadata({name: 'Brawler Gloves', icon: 'inv_gauntlets_05', quality: 3}), {name: 'Brawler Gloves', icon: 'https://wow.zamimg.com/images/wow/icons/medium/inv_gauntlets_05.jpg', quality: 3});
+  assert.deepEqual(itemMetadata({name: 'Known', icon: '../bad'}), {name: 'Known', icon: null, quality: null});
   assert.equal(itemMetadata({name: ''}), null);
 });
 test('craft output choices stay bounded to selected and recipe items', () => {
@@ -26,6 +37,12 @@ test('search, favorites and numeric sorting work together', () => {
   const names = { 1: { name: 'Лотос' }, 2: { name: 'Чёрный лотос' }, 3: { name: 'Ткань' } };
   assert.deepEqual(filterItems(items, names, 'ЛОТОС', new Set(['2']), true, 'price', 1).map(x => x[0]), ['2']);
   assert.deepEqual(filterItems(items, names, '', new Set(), false, 'price', 1).map(x => x[0]), ['3', '2', '1']);
+});
+test('search matches partial words in any order', () => {
+  const items = {1: [1, 1, 1, 1], 2: [2, 2, 2, 2]};
+  const names = {1: {name: 'Greater Arcane Elixir'}, 2: {name: 'Dreamfoil'}};
+  assert.deepEqual(filterItems(items, names, 'eli arc', new Set(), false, 'name', 1).map(x => x[0]), ['1']);
+  assert.deepEqual(filterItems(items, names, 'dr fo', new Set(), false, 'name', 1).map(x => x[0]), ['2']);
 });
 test('CSV escapes quotes and prevents spreadsheet formulas', () => {
   assert.equal(csvValue('=SUM(1)'), '"\'=SUM(1)"');
