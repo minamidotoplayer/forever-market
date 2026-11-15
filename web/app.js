@@ -1,3 +1,4 @@
+import { initLanguage, english } from './i18n.js';
 import { moneyParts, moneyText, historyPoints, filterItems, csvValue, sourceUrl } from './lib.js';
 import { demoData, demoIndex } from './demo.js';
 const $ = id => document.getElementById(id);
@@ -25,7 +26,7 @@ function money(value) {
 function getRegion() { return state.index?.regions.find(region => region.id === state.region); }
 function getRule() { return getRegion()?.rulesets.find(rule => String(rule.id) === state.ruleset); }
 function getHouse() { return getRule()?.houses.find(house => String(house.id) === state.house); }
-function nameOf(id) { return state.names[id]?.name || `Предмет #${id}`; }
+function nameOf(id) { const name = state.names[id]?.name || `Предмет #${id}`; return document.documentElement.lang === 'en' ? english(name) : name; }
 function iconOf(id) { return state.names[id]?.icon || ['◆', '✧', '▰', '❧'][Number(id) % 4]; }
 function selectionSaved() {
   safeWrite('fm-selection', { region: state.region, ruleset: state.ruleset, house: state.house });
@@ -261,4 +262,6 @@ $('export-button').addEventListener('click', () => {
   const url = URL.createObjectURL(blob), link = document.createElement('a'); link.href = url; link.download = `forever-${state.demo ? 'demo-' : ''}${state.region}-${state.ruleset}-${state.house}.csv`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
 document.addEventListener('keydown', event => { if (event.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName) && !$('settings-dialog').open) { event.preventDefault(); $('search').focus(); } });
+initLanguage();
+document.addEventListener('languagechange', () => { fillPickers(); renderAll(); });
 loadIndex();
