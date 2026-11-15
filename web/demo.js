@@ -33,7 +33,8 @@ export function demoData(region = 'eu', ruleset = '1', house = '110') {
   for (let i = 167; i >= 0; i--) history.hourly[now - i * 3600] = snapshot(now - i * 3600);
   for (let i = 89; i >= 0; i--) { const day = Math.floor(now / 86400) * 86400 - i * 86400; history.daily[day] = snapshot(day); }
   const items = Object.fromEntries(Object.entries(snapshot(now)).map(([id, values], i) => [id, [...values, 8 + i * 5]]));
-  return { summary: { updatedAt: now, items }, history, names };
+  const depth = Object.fromEntries(Object.entries(items).map(([id, values]) => [id, [[values[0], 1, Math.min(values[2], 20), true], [Math.round(values[0] * 1.2), 1, Math.max(1, values[2] - 20), true]]]));
+  return { summary: { updatedAt: now, items, depth }, history, names };
 }
 export const demoIndex = {
   regions: ['eu', 'us', 'kr', 'tw'].map(id => ({ id, rulesets: [

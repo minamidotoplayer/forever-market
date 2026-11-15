@@ -86,6 +86,23 @@ def summarize(auctions):
     return result
 
 
+def price_depth(auctions):
+    """Group identical offers. Commodity quantities are divisible; regular stacks are not."""
+    groups = collections.defaultdict(collections.Counter)
+    for row in auctions:
+        item = row.get('item', {}).get('id')
+        qty = row.get('quantity', 0)
+        if not item or not isinstance(qty, int) or qty <= 0:
+            continue
+        if row.get('unit_price') is not None:
+            unit = row['unit_price']
+            if isinstance(unit, int) and unit > 0:
+                groups[str(item)][(unit, 1, True)] += qty
+        elif isinstance(row.get('buyout'), int) and row['buyout'] > 0:
+            groups[str(item)][(row['buyout'], qty, False)] += 1
+    return {item: [[price, qty, count, divisible] for (price, qty, divisible), count in sorted(offers.items(), key=lambda x: x[0][0] / x[0][1])] for item, offers in groups.items()}
+
+
 def update_history(history, prices, timestamp):
     """Hourly latest observations for 7 days; last observation/day for 90 days."""
     hour = timestamp // 3600 * 3600
@@ -153,7 +170,7 @@ def collect(api, regions):
                             if commodities is None and data.get('commodities'):
                                 raise RuntimeError('Advertised commodity feed is unavailable')
                             prices = summarize(auctions + (commodities or {}).get('auctions', []))
-                            summary = {'updatedAt': now, 'items': prices}
+                            summary = {'updatedAt': now, 'items': prices, 'depth': price_depth(auctions + (commodities or {}).get('auctions', []))}
                             history = read_json(history_path, {'hourly': {}, 'daily': {}})
                             write_json(history_path, update_history(history, prices, now))
                             write_json(summary_path, summary)

@@ -20,6 +20,12 @@ class CollectorTest(unittest.TestCase):
         ]
         self.assertEqual(collector.summarize(offers), {'1': [50, 100, 103, 3]})
 
+    def test_depth_preserves_whole_stacks_and_divisible_commodities(self):
+        rows = [{'item': {'id': 1}, 'quantity': 4, 'buyout': 100},
+                {'item': {'id': 1}, 'quantity': 4, 'buyout': 100},
+                {'item': {'id': 1}, 'quantity': 7, 'unit_price': 10}]
+        self.assertEqual(collector.price_depth(rows), {'1': [[10, 1, 7, True], [100, 4, 2, False]]})
+
     def test_empty_house_is_a_valid_empty_snapshot(self):
         self.assertEqual(collector.summarize([]), {})
 

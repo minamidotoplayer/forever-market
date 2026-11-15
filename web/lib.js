@@ -30,3 +30,25 @@ export function sourceUrl(value) {
   if (url.username || url.password || url.search || url.hash) throw new Error('Укажите адрес папки данных без пароля, параметров и #.');
   return url.href.replace(/\/?$/, '/');
 }
+
+// Greedy quote buys indivisible stacks in unit-price order. It is an estimate,
+// not an optimal basket: buying whole stacks can overshoot the requested amount.
+export function quoteDepth(offers, requested) {
+  if (!Array.isArray(offers) || !Number.isSafeInteger(requested) || requested < 1) return null;
+  let remaining = requested, cost = 0, units = 0;
+  for (const [price, size, count, divisible] of offers) {
+    if (!(price > 0 && Number.isSafeInteger(size) && size > 0 && Number.isSafeInteger(count) && count > 0)) continue;
+    const take = Math.min(count, divisible ? remaining : Math.ceil(remaining / size));
+    cost += take * price; units += take * size; remaining -= take * size;
+    if (remaining <= 0) break;
+  }
+  return { cost, units, complete: remaining <= 0 };
+}
+export function bestHours(hourly, itemId, now) {
+  const groups = Array.from({length:24}, () => []);
+  for (const [time, items] of Object.entries(hourly || {})) {
+    const t = Number(time), price = items[itemId]?.[0];
+    if (t <= now && t >= now - 7 * 86400 && Number.isFinite(price) && price > 0) groups[new Date(t * 1000).getUTCHours()].push(price);
+  }
+  return groups.map((values, hour) => ({hour, count:values.length, average:values.reduce((a,b)=>a+b,0)/values.length})).filter(x=>x.count>=3).sort((a,b)=>b.average-a.average);
+}

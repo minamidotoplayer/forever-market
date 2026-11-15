@@ -1,5 +1,5 @@
 import { initLanguage, english } from './i18n.js';
-import { moneyParts, moneyText, historyPoints, filterItems, csvValue, sourceUrl } from './lib.js';
+import { moneyParts, moneyText, historyPoints, filterItems, csvValue, sourceUrl, quoteDepth, bestHours } from './lib.js';
 import { demoData, demoIndex } from './demo.js';
 const $ = id => document.getElementById(id);
 const safeRead = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } };
@@ -166,15 +166,29 @@ function toggleFavorite(id) {
 }
 function renderBasket() {
   const entries = Object.entries(state.basket).filter(([id, qty]) => /^\d+$/.test(id) && Number.isInteger(qty) && qty > 0);
-  let total = 0, missing = 0;
+  let total = 0, missing = 0, unpriced = 0;
   const rows = entries.map(([id, qty]) => {
     const v = state.summary?.items[id];
-    if (v) total += v[0] * qty; else missing++;
-    return `<div class="basket-row"><span>${escape(nameOf(id))} <small> #${escape(id)}</small></span><label>Qty / Кол-во <input type="number" min="1" max="1000000" value="${qty}" data-qty="${id}" aria-label="Quantity / Количество"></label><strong>${v ? money(v[0] * qty) : '—'}</strong><button class="icon-button" data-remove="${id}" aria-label="Remove / Удалить">×</button></div>`;
+    const q = quoteDepth(state.summary?.depth?.[id], qty); if (q?.complete) total += q.cost; else if (!v || q) missing++; else unpriced++;
+    return `<div class="basket-row"><span>${escape(nameOf(id))} <small> #${escape(id)}</small></span><label>Qty / Кол-во <input type="number" min="1" max="1000000" value="${qty}" data-qty="${id}" aria-label="Quantity / Количество"></label><strong>${q?.complete ? money(q.cost) : '—'}</strong><button class="icon-button" data-remove="${id}" aria-label="Remove / Удалить">×</button></div>`;
   });
-  $('basket-content').innerHTML = entries.length ? rows.join('') + `<p class="basket-total">Estimated total / Примерная сумма: <strong>${money(total)}</strong>${missing ? ` · ${missing} unavailable / недоступно` : ''}</p><p class="method-note">Estimate uses lowest unit price, assumes enough stock at that price and may differ from the actual cost. / Оценка по минимальной цене за единицу; реальная стоимость может быть выше.</p>` : '<p class="basket-empty">Select an item and add it here. / Выберите предмет и добавьте его в корзину.</p>';
+  $('basket-content').innerHTML = entries.length ? rows.join('') + `<p class="basket-total">Estimated total / Примерная сумма: <strong>${money(total)}</strong>${missing ? ` · ${missing} insufficient stock / недостаточно лотов` : ''}${unpriced ? ` · ${unpriced} no depth data / нет данных лотов` : ''}</p><p class="method-note">Estimate buys cheapest unit-price offers first, including whole stacks; it may buy extra and is not always the cheapest combination. / Оценка покупает лоты по цене за единицу, целые пачки могут дать избыток; это не всегда оптимальная комбинация.</p>` : '<p class="basket-empty">Select an item and add it here. / Выберите предмет и добавьте его в корзину.</p>';
+  renderCraft(entries, total, missing + unpriced);
   $('basket-content').querySelectorAll('[data-qty]').forEach(input => input.addEventListener('change', () => { const value = Number(input.value); if (Number.isInteger(value) && value > 0 && value <= 1000000) state.basket[input.dataset.qty] = value; safeWrite('fm-basket', state.basket); renderBasket(); }));
   $('basket-content').querySelectorAll('[data-remove]').forEach(button => button.addEventListener('click', () => { delete state.basket[button.dataset.remove]; safeWrite('fm-basket', state.basket); renderBasket(); }));
+}
+function renderCraft(entries, ingredientCost, missing) {
+  const select = $('craft-output');
+  const previous = select.value || state.selected;
+  const ids = Object.keys(state.summary?.items || {});
+  options('craft-output', ids.map(id => [id, `${nameOf(id)} (#${id})`]), ids.includes(previous) ? previous : state.selected);
+  const count = Number($('craft-count').value), fee = Number($('craft-fee').value), output = state.summary?.items[select.value];
+  if (!entries.length || missing || !output || !Number.isInteger(count) || count < 1 || count > 10000 || !Number.isFinite(fee) || fee < 0 || fee > 100) {
+    $('craft-result').textContent = 'Add available ingredients, choose an output, and enter valid quantities. Requires current listing data. / Добавьте доступные материалы, выберите результат и проверьте количество. Требуются данные лотов.'; return;
+  }
+  const buy = quoteDepth(state.summary?.depth?.[select.value], count);
+  const sale = output[0] * count, net = sale * (1 - fee / 100), profit = net - ingredientCost;
+  $('craft-result').innerHTML = `Craft cost / Крафт: ${money(ingredientCost)} · Buy output / Купить: ${buy?.complete ? money(buy.cost) : '—'} · Estimated net sale / После комиссии: ${money(net)} · Difference / Разница: ${profit < 0 ? '−' : '+'}${money(Math.abs(profit))}<p>Based on current lowest output listing, not a guaranteed sale. Deposits, vendor materials and crafting costs are excluded. / По минимальной цене результата; продажа не гарантирована. Залог, материалы у торговца и затраты на изготовление не учтены.</p>`;
 }
 function renderDetail() {
   const id = state.selected, values = state.summary?.items[id];
@@ -205,6 +219,10 @@ function renderDetail() {
   $('legend-name').textContent = state.metric === 0 ? 'Минимальный выкуп' : 'Медианная цена';
   $('chart-resolution').textContent = `${state.demo ? 'Демо · ' : ''}${state.days <= 7 ? 'Почасовые' : 'Дневные'} снимки · UTC`;
   $('history-body').innerHTML = [...observed].reverse().map(point => `<tr><td>${escape(date(point.time))}</td><td>${money(point.values[0])}</td><td>${money(point.values[1])}</td></tr>`).join('') || '<tr><td colspan="3">Наблюдений пока нет</td></tr>';
+  const qty = Number($('quote-qty').value), quote = quoteDepth(state.summary?.depth?.[id], qty);
+  $('quote-result').innerHTML = !quote ? 'No listing depth available yet. / Данные лотов пока недоступны.' : !quote.complete ? `Only ${number(quote.units)} units available / доступно единиц: ${number(quote.units)}.` : `Estimated cost / Примерная стоимость: ${money(quote.cost)} · ${number(quote.units)} units / ед. (${money(quote.cost / quote.units)} / unit). Whole stacks, cheapest per unit first; not necessarily optimal. / Целые пачки, сначала по минимальной цене за штуку; не всегда оптимально.`;
+  const hours = bestHours(state.history?.hourly, id, now);
+  $('hour-result').innerHTML = hours.length ? `Highest observed listing minimum / Самый высокий средний минимум: ${String(hours[0].hour).padStart(2,'0')}:00 UTC · ${money(hours[0].average)} · ${hours[0].count} observations / наблюдений. Past listings are not completed sales. / Выставленные цены не гарантируют продажу.` : 'Best-hour analysis needs at least 3 days of hourly snapshots at the same UTC hour. / Для анализа часа нужны снимки минимум за 3 дня в один и тот же час UTC.';
   renderChart(points);
 }
 function renderChart(points) {
@@ -259,6 +277,8 @@ $('house').addEventListener('change', () => { state.house = $('house').value; lo
 $('search').addEventListener('input', () => { state.query = $('search').value; state.page = 1; renderTable(); });
 $('previous').addEventListener('click', () => { state.page--; renderTable(); });
 $('next').addEventListener('click', () => { state.page++; renderTable(); });
+$('quote-qty').addEventListener('input', renderDetail);
+for (const id of ['craft-output','craft-count','craft-fee']) $(id).addEventListener('change', renderBasket);
 $('basket-add').addEventListener('click', () => { if (!state.selected || !state.summary?.items[state.selected]) return; state.basket[state.selected] = (state.basket[state.selected] || 0) + 1; safeWrite('fm-basket', state.basket); renderBasket(); });
 $('detail-favorite').addEventListener('click', () => toggleFavorite(state.selected));
 $('market-tab').addEventListener('click', () => changeView(false)); $('favorites-tab').addEventListener('click', () => changeView(true));
