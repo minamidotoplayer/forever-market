@@ -269,7 +269,7 @@ function changeView(favorites) {
   state.favoritesOnly = favorites; state.page = 1;
   $('market-tab').classList.toggle('active', !favorites); $('favorites-tab').classList.toggle('active', favorites);
   $('breadcrumb').textContent = favorites ? 'ИЗБРАННОЕ' : 'ОБЗОР РЫНКА';
-  $('page-title').innerHTML = favorites ? 'Ваши избранные<span>.</span>' : 'Рынок под контролем<span>.</span>';
+  $('page-title').innerHTML = favorites ? 'Ваши избранные<span>.</span>' : 'Аукционный дом<span></span>';
   renderTable();
 }
 $('region').addEventListener('change', () => { state.region = $('region').value; fillPickers(); loadMarket(); });

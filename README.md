@@ -60,7 +60,7 @@ python3 scripts/collect.py
 npm run build
 ```
 
-Optional variables: `REGIONS` defaults to `eu,us,kr,tw`; `MAX_NAME_LOOKUPS` defaults to `300`. Names are loaded gradually and can remain as item IDs when Blizzard does not provide them. `.env.example` documents variable names; the collector does not automatically load an `.env` file.
+Optional variables: `REGIONS` defaults to `eu,us,kr,tw`; `MAX_NAME_LOOKUPS` defaults to `300`. Names and icons are loaded gradually. When Blizzard has no item name, the collector tries Wowhead’s Forever tooltip data; items absent from both sources remain as IDs. `.env.example` documents variable names; the collector does not automatically load an `.env` file.
 
 ## Data and maintenance
 

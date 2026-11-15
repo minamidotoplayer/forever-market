@@ -125,6 +125,16 @@ def localized_name(value):
     return ''
 
 
+def fallback_item_name(item_id):
+    """Resolve missing names from Wowhead's Forever tooltip data."""
+    try:
+        data = request_json(f'https://nether.wowhead.com/forever/tooltip/item/{int(item_id)}', optional=True) or {}
+        name = data.get('name')
+        return name if isinstance(name, str) else ''
+    except (RuntimeError, ValueError):
+        return ''
+
+
 def collect(api, regions):
     now = int(time.time())
     old_index = read_json(ROOT / 'index.json', {'regions': []})
@@ -199,14 +209,18 @@ def collect(api, regions):
     if not successful:
         raise RuntimeError('No auction feeds succeeded; keeping previous data. ' + '; '.join(output['errors']))
     # Bound name resolution per run. Missing lookups get an ID fallback and retry in 7 days.
-    pending = [item_id for item_id in sorted(known_ids, key=int) if item_id not in names or 'mediaCheckedAt' not in names[item_id] or (names[item_id].get('missing') and now - names[item_id].get('checkedAt', 0) > 7 * 86400)]
+    pending = [item_id for item_id in sorted(known_ids, key=int) if item_id not in names or 'mediaCheckedAt' not in names[item_id] or (names[item_id].get('missing') and ('fallbackCheckedAt' not in names[item_id] or now - names[item_id].get('checkedAt', 0) > 7 * 86400))]
     for item_id in pending[:int(os.environ.get('MAX_NAME_LOOKUPS', '300'))]:
         try:
             item = api.get(regions[0], f'/data/wow/item/{int(item_id)}', 'static', optional=True)
             name = localized_name((item or {}).get('name'))
+            source = 'blizzard'
+            if not name:
+                name = fallback_item_name(item_id)
+                source = 'wowhead' if name else 'unknown'
             media = api.get(regions[0], f'/data/wow/media/item/{int(item_id)}', 'static', optional=True) or {}
             icon = next((asset.get('value') for asset in media.get('assets', []) if asset.get('key') == 'icon' and isinstance(asset.get('value'), str) and asset['value'].startswith('https://')), None)
-            names[item_id] = {'name': name or f'Item #{item_id}', 'checkedAt': now, 'missing': not bool(name), 'icon': icon, 'mediaCheckedAt': now}
+            names[item_id] = {'name': name or f'Item #{item_id}', 'checkedAt': now, 'missing': not bool(name), 'icon': icon, 'mediaCheckedAt': now, 'fallbackCheckedAt': now, 'source': source}
         except RuntimeError:
             break
     write_json(ROOT / 'items.json', names)

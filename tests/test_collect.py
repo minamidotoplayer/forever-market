@@ -10,6 +10,12 @@ spec.loader.exec_module(collector)
 
 
 class CollectorTest(unittest.TestCase):
+    def test_fallback_name_used_only_when_blizzard_has_no_name(self):
+        with patch.object(collector, 'request_json', return_value={'name': 'Brawler Gloves'}):
+            self.assertEqual(collector.fallback_item_name(720), 'Brawler Gloves')
+        with patch.object(collector, 'request_json', side_effect=RuntimeError('unavailable')):
+            self.assertEqual(collector.fallback_item_name(720), '')
+
     def test_ruleset_name_and_item_media(self):
         class API:
             def get(self, region, path, namespace='dynamic', optional=False, locale='en_US'):
