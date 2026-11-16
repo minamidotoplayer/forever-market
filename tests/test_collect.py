@@ -21,6 +21,8 @@ class CollectorTest(unittest.TestCase):
         self.assertEqual(meta['classId'], 7)
         self.assertEqual(meta['subclassId'], 9)
         self.assertEqual(meta['requiredLevel'], 0)
+        trinket = collector.tooltip_metadata({'name': 'Lifestone', 'tooltip': '<!--scstart4:-4-->'})
+        self.assertEqual((trinket['classId'], trinket['subclassId']), (4, 0))
         self.assertTrue(meta['icon'].startswith('https://wow.zamimg.com/'))
         self.assertIsNone(collector.tooltip_metadata({'name': ''}))
         self.assertIsNone(collector.tooltip_metadata({'name': 'X', 'icon': '../bad'})['icon'])

@@ -27,3 +27,9 @@ class BackfillTest(unittest.TestCase):
             self.assertEqual(names['2'], {'name': 'Cached', 'classId': 7, 'icon': 'https://icon', 'metadataVersion': 3})
             self.assertEqual(names['3']['classId'], 2)
             self.assertFalse(names['3']['missing'])
+
+    def test_blizzard_supplies_categories_missing_from_tooltip(self):
+        class API:
+            def get(self, *args, **kwargs):
+                return {'item_class': {'id': 7}, 'item_subclass': {'id': 9}, 'required_level': 0}
+        self.assertEqual(backfill.classification(API(), '13463'), {'classId': 7, 'subclassId': 9, 'requiredLevel': 0})

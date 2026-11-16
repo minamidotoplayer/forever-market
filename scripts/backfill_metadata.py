@@ -3,10 +3,23 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import time
-from collect import read_json, write_json, fetch_tooltip_metadata
+import os
+from collect import Blizzard, read_json, write_json, fetch_tooltip_metadata
 
 
-def backfill(root, workers=8):
+def classification(api, item):
+    try:
+        data = api.get('eu', f'/data/wow/item/{item}', 'static', optional=True) or {}
+        class_id = data.get('item_class', {}).get('id')
+        subclass_id = data.get('item_subclass', {}).get('id')
+        if class_id is not None and subclass_id is not None:
+            return {'classId': class_id, 'subclassId': subclass_id, 'requiredLevel': data.get('required_level', 0)}
+        return fetch_tooltip_metadata(item)
+    except RuntimeError:
+        return None
+
+
+def backfill(root, workers=8, api=None):
     index = read_json(root / 'index.json', {})
     catalogue = read_json(root / 'items.json', {})
     ids = set()
@@ -34,6 +47,16 @@ def backfill(root, workers=8):
             if number % 100 == 0:
                 write_json(root / 'items.json', catalogue)
                 print(f'Metadata {number}/{len(pending)}; resolved {resolved}', flush=True)
+    if api is not None:
+        unclassified = [item for item in sorted(ids, key=int) if catalogue.get(item, {}).get('classId') is None or catalogue.get(item, {}).get('subclassId') is None]
+        print(f'Blizzard categories to complete: {len(unclassified)}', flush=True)
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            for number, (item, meta) in enumerate(zip(unclassified, pool.map(lambda item: classification(api, item), unclassified)), 1):
+                if meta:
+                    catalogue[item] = {**catalogue.get(item, {}), **{key: value for key, value in meta.items() if value is not None}}
+                if number % 100 == 0:
+                    write_json(root / 'items.json', catalogue)
+                    print(f'Categories {number}/{len(unclassified)}', flush=True)
     write_json(root / 'items.json', catalogue)
     print(f'Completed {resolved}/{len(pending)} items; failures will retry next run.', flush=True)
     print(f"Coverage: {sum(bool(catalogue.get(item, {}).get('name')) and not catalogue.get(item, {}).get('missing', False) for item in ids)}/{len(ids)} named; {sum(catalogue.get(item, {}).get('subclassId') is not None for item in ids)}/{len(ids)} classified", flush=True)
@@ -43,4 +66,4 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--root', type=Path, required=True)
     args = parser.parse_args()
-    backfill(args.root)
+    backfill(args.root, api=Blizzard() if os.environ.get("BNET_CLIENT_ID") and os.environ.get("BNET_CLIENT_SECRET") else None)

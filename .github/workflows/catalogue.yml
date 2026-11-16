@@ -26,6 +26,9 @@ jobs:
           git fetch origin market-data --depth=1
           git worktree add --detach "$RUNNER_TEMP/catalogue" FETCH_HEAD
       - name: Complete names, icons and categories
+        env:
+          BNET_CLIENT_ID: ${{ secrets.BNET_CLIENT_ID }}
+          BNET_CLIENT_SECRET: ${{ secrets.BNET_CLIENT_SECRET }}
         run: python scripts/backfill_metadata.py --root "$RUNNER_TEMP/catalogue/data"
       - name: Save completed catalogue
         run: |

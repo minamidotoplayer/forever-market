@@ -131,7 +131,7 @@ def tooltip_metadata(data):
     if not isinstance(data, dict) or not isinstance(data.get('name'), str) or not data['name'].strip():
         return None
     tooltip = data.get('tooltip') or ''
-    category = re.search(r'<!--scstart(\d+):(\d+)-->', tooltip)
+    category = re.search(r'<!--scstart(\d+):(-?\d+)-->', tooltip)
     level = re.search(r'<!--rlvl-->(\d+)', tooltip)
     icon = data.get('icon')
     quality = data.get('quality')
@@ -139,7 +139,7 @@ def tooltip_metadata(data):
             'icon': f'https://wow.zamimg.com/images/wow/icons/medium/{icon}.jpg' if isinstance(icon, str) and re.fullmatch(r'[a-zA-Z0-9_]+', icon) else None,
             'quality': quality if type(quality) is int and 0 <= quality <= 5 else None,
             'classId': int(category[1]) if category else None,
-            'subclassId': int(category[2]) if category else None,
+            'subclassId': max(0, int(category[2])) if category else None,
             'requiredLevel': int(level[1]) if level else 0,
             'metadataVersion': 3}
 
