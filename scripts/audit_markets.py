@@ -48,3 +48,7 @@ for rule in api.get(region, '/data/wow/ruleset/index').get('rulesets', []):
                         conflicts += 1
                     seen[identity] = content
         print(json.dumps({'factionRows': total, 'uniqueIds': len(seen), 'conflictingIds': conflicts}), flush=True)
+
+for item_id in [13463, 14047, 14344, 833]:
+    item = api.get(region, f'/data/wow/item/{item_id}', 'static', optional=True)
+    print(json.dumps({'itemId': item_id, 'staticItem': item}, ensure_ascii=False), flush=True)
