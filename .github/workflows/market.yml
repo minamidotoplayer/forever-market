@@ -1,16 +1,12 @@
-name: Collect & publish
+name: Collect market data
 on:
   workflow_dispatch:
   schedule:
     - cron: '23 * * * *'
-  push:
-    branches: [main]
 permissions:
   contents: write
-  pages: write
-  id-token: write
 concurrency:
-  group: forever-market-publish
+  group: forever-market-collect
   cancel-in-progress: false
 jobs:
   collect:
@@ -72,22 +68,3 @@ jobs:
             git -C "$RUNNER_TEMP/market-state" commit -m 'Update auction snapshots and history'
             git -C "$RUNNER_TEMP/market-state" push origin HEAD:market-data
           fi
-      - name: Build static site
-        run: npm run build
-      - name: Check Pages artifact size
-        run: |
-          python3 -c "from pathlib import Path; size=sum(p.stat().st_size for p in Path('dist').rglob('*') if p.is_file()); print(f'Artifact size {size / 1024**2:.1f} MiB'); assert size < 900 * 1024**2, 'Approaching GitHub Pages size limit. Reduce history retention or regions.'"
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
-  deploy:
-    needs: collect
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4

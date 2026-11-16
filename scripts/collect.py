@@ -1,6 +1,7 @@
 """Blizzard Forever collector. Standard library only; never exports credentials."""
 import base64
 import collections
+from concurrent.futures import ThreadPoolExecutor
 import datetime as dt
 import hashlib
 import json
@@ -148,6 +149,23 @@ def unique_auctions(feeds):
     return result
 
 
+def resolve_item_metadata(api, region, item_id, now):
+    try:
+        item = api.get(region, f'/data/wow/item/{int(item_id)}', 'static', optional=True)
+        name = localized_name((item or {}).get('name'))
+        source = 'blizzard'
+        if not name:
+            name = fallback_item_name(item_id)
+            source = 'wowhead' if name else 'unknown'
+        media = api.get(region, f'/data/wow/media/item/{int(item_id)}', 'static', optional=True) or {}
+        icon = next((asset.get('value') for asset in media.get('assets', []) if asset.get('key') == 'icon' and isinstance(asset.get('value'), str) and asset['value'].startswith('https://')), None)
+        item = item or {}
+        quality = {'POOR': 0, 'COMMON': 1, 'UNCOMMON': 2, 'RARE': 3, 'EPIC': 4, 'LEGENDARY': 5}.get(item.get('quality', {}).get('type'))
+        return {'name': name or f'Item #{item_id}', 'checkedAt': now, 'missing': not bool(name), 'icon': icon, 'mediaCheckedAt': now, 'fallbackCheckedAt': now, 'source': source, 'filterCheckedAt': now, 'quality': quality, 'classId': item.get('item_class', {}).get('id'), 'subclassId': item.get('item_subclass', {}).get('id'), 'requiredLevel': item.get('required_level')}
+    except RuntimeError:
+        return None
+
+
 def collect(api, regions):
     now = int(time.time())
     old_index = read_json(ROOT / 'index.json', {'regions': []})
@@ -158,11 +176,11 @@ def collect(api, regions):
     successful = 0
     # Deduplicate canonical URLs within each ruleset while retaining raw IDs for the faction union.
     for region in regions:
+        region_started = time.monotonic()
         try:
             rulesets = api.get(region, '/data/wow/ruleset/index').get('rulesets', [])
             entry = {'id': region, 'rulesets': []}
             for rule in rulesets:
-                fetched = {}
                 raw_feeds = {}
                 group_feeds = collections.defaultdict(list)
                 rule_id = int(rule['id'])
@@ -180,40 +198,27 @@ def collect(api, regions):
                     house_id = int(house['id'])
                     path = urllib.parse.urlsplit(house.get('key', {}).get('href', f'/data/wow/ruleset/{rule_id}/auctions/{house_id}')).path
                     key = f'{region}-{hashlib.sha256(path.encode()).hexdigest()[:16]}'
-                    summary_path = ROOT / 'markets' / f'{key}.json'
-                    history_path = ROOT / 'history' / f'{key}.json'
-                    old_summary = read_json(summary_path, {})
                     try:
-                        if (region, path) not in fetched:
+                        if path not in raw_feeds:
                             data = api.get(region, path, optional=True)
                             if data is None:
                                 raise RuntimeError('Auction house is not available (404)')
-                            # Some Forever houses intentionally have no auctions field.
                             auctions = data.get('auctions', [])
                             if isinstance(auctions, dict):
                                 auctions = api.get(region, auctions['href']).get('auctions', [])
                             commodity_path = data.get('commodities', {}).get('href', path.rstrip('/') + '/commodities')
                             commodities = api.get(region, commodity_path, optional=True)
-                            # If a house advertises commodities, failure must preserve the old snapshot.
                             if commodities is None and data.get('commodities'):
                                 raise RuntimeError('Advertised commodity feed is unavailable')
-                            prices = summarize(auctions + (commodities or {}).get('auctions', []))
-                            summary = {'updatedAt': now, 'items': prices, 'depth': price_depth(auctions + (commodities or {}).get('auctions', []))}
-                            history = read_json(history_path, {'hourly': {}, 'daily': {}})
-                            write_json(history_path, update_history(history, prices, now))
-                            write_json(summary_path, summary)
-                            fetched[(region, path)] = summary
-                            raw_feeds[(region, path)] = auctions + (commodities or {}).get('auctions', [])
-                        summary = fetched[(region, path)]
-                        known_ids.update(summary['items'])
+                            raw_feeds[path] = auctions + (commodities or {}).get('auctions', [])
+                        rows = raw_feeds[path]
+                        known_ids.update(str(row['item']['id']) for row in rows if row.get('item', {}).get('id'))
                         successful += 1
-                        group_feeds[localized_name(house.get('name')) or str(house_id)].append(raw_feeds[(region, path)])
-                        rule_entry['houses'].append({'id': house_id, 'name': localized_name(house.get('name')) or str(house_id), 'key': key, 'updatedAt': summary['updatedAt']})
+                        name = localized_name(house.get('name')) or str(house_id)
+                        group_feeds[name].append(rows)
+                        rule_entry['houses'].append({'id': house_id, 'name': name})
                     except (RuntimeError, KeyError, ValueError) as error:
                         output['errors'].append(f'{region}/{rule_id}/{house_id}: {error}')
-                        if old_summary:
-                            known_ids.update(old_summary.get('items', {}))
-                            rule_entry['houses'].append({'id': house_id, 'name': localized_name(house.get('name')), 'key': key, 'updatedAt': old_summary['updatedAt'], 'stale': True})
                         raise RuntimeError('Incomplete faction snapshot; preserving previous region') from None
                 grouped = []
                 for name, feeds in group_feeds.items():
@@ -229,6 +234,7 @@ def collect(api, regions):
                 rule_entry['houses'] = grouped
                 entry['rulesets'].append(rule_entry)
             output['regions'].append(entry)
+            print(f'Region {region}: {time.monotonic() - region_started:.1f}s', flush=True)
         except (RuntimeError, KeyError, ValueError) as error:
             output['errors'].append(f'{region}: {error}')
             if region in old_regions:
@@ -239,21 +245,14 @@ def collect(api, regions):
         raise RuntimeError('No auction feeds succeeded; keeping previous data. ' + '; '.join(output['errors']))
     # Bound name resolution per run. Missing lookups get an ID fallback and retry in 7 days.
     pending = [item_id for item_id in sorted(known_ids, key=int) if item_id not in names or 'subclassId' not in names[item_id] or 'mediaCheckedAt' not in names[item_id] or (names[item_id].get('missing') and ('fallbackCheckedAt' not in names[item_id] or now - names[item_id].get('checkedAt', 0) > 7 * 86400))]
-    for item_id in pending[:int(os.environ.get('MAX_NAME_LOOKUPS', '300'))]:
-        try:
-            item = api.get(regions[0], f'/data/wow/item/{int(item_id)}', 'static', optional=True)
-            name = localized_name((item or {}).get('name'))
-            source = 'blizzard'
-            if not name:
-                name = fallback_item_name(item_id)
-                source = 'wowhead' if name else 'unknown'
-            media = api.get(regions[0], f'/data/wow/media/item/{int(item_id)}', 'static', optional=True) or {}
-            icon = next((asset.get('value') for asset in media.get('assets', []) if asset.get('key') == 'icon' and isinstance(asset.get('value'), str) and asset['value'].startswith('https://')), None)
-            item = item or {}
-            quality = {'POOR': 0, 'COMMON': 1, 'UNCOMMON': 2, 'RARE': 3, 'EPIC': 4, 'LEGENDARY': 5}.get(item.get('quality', {}).get('type'))
-            names[item_id] = {'name': name or f'Item #{item_id}', 'checkedAt': now, 'missing': not bool(name), 'icon': icon, 'mediaCheckedAt': now, 'fallbackCheckedAt': now, 'source': source, 'filterCheckedAt': now, 'quality': quality, 'classId': item.get('item_class', {}).get('id'), 'subclassId': item.get('item_subclass', {}).get('id'), 'requiredLevel': item.get('required_level')}
-        except RuntimeError:
-            break
+    selected = pending[:int(os.environ.get('MAX_NAME_LOOKUPS', '300'))]
+    started = time.monotonic()
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        results = pool.map(lambda item_id: resolve_item_metadata(api, regions[0], item_id, now), selected)
+        for item_id, record in zip(selected, results):
+            if record is not None:
+                names[item_id] = record
+    print(f'Metadata: {len(selected)} lookups in {time.monotonic() - started:.1f}s', flush=True)
     write_json(ROOT / 'items.json', names)
     write_json(ROOT / 'index.json', output)
     print(f'Updated {successful} market references in {len(output["regions"])} regions. {len(output["errors"])} feeds unavailable.')

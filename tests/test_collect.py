@@ -10,6 +10,11 @@ spec.loader.exec_module(collector)
 
 
 class CollectorTest(unittest.TestCase):
+    def test_metadata_failure_preserves_cached_item(self):
+        class API:
+            def get(self, *args, **kwargs):
+                raise RuntimeError('temporary failure')
+        self.assertIsNone(collector.resolve_item_metadata(API(), 'eu', '42', 100))
     def test_faction_union_deduplicates_auction_ids(self):
         row = {'id': 10, 'item': {'id': 42}, 'quantity': 2, 'buyout': 100}
         rows = collector.unique_auctions([[row], [row, {**row, 'id': 11, 'buyout': 200}]])

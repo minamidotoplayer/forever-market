@@ -33,7 +33,7 @@ The static site and scheduled collector can run on GitHub Free in a **public** r
    - `BNET_CLIENT_ID`
    - `BNET_CLIENT_SECRET`
 3. In **Settings → Pages**, set the source to **GitHub Actions**.
-4. Open **Actions → Collect & publish**, select **Run workflow**, and wait for the deploy job. The job displays the site URL.
+4. Open **Actions → Collect market data**, select **Run workflow**, and wait for the deploy job. The job displays the site URL.
 
 Keep the Client Secret in GitHub Secrets. Do not add it to the repository or enter it on the site.
 
@@ -77,3 +77,5 @@ Listing depth is available only in snapshots collected after the depth feature w
 Code is available under the [MIT License](LICENSE). World of Warcraft and related marks belong to Blizzard Entertainment.
 
 Auction feeds with the same faction name are combined per region and ruleset. Repeated auction IDs are counted once. Combined history starts with the first combined snapshot; original feed histories remain in the data branch. Category and required-level filters only match items with known metadata.
+
+Deployment: pushes to main run Publish site using the latest market-data snapshot. Collect market data runs hourly or manually, then triggers Publish site after success. Metadata lookups use four workers; the collector logs region and metadata timings.

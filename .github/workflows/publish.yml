@@ -1,0 +1,60 @@
+name: Publish site
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  workflow_run:
+    workflows: ['Collect market data']
+    types: [completed]
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: forever-market-publish
+  cancel-in-progress: false
+jobs:
+  build:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Restore latest market snapshots
+        shell: bash
+        run: |
+          if git fetch origin market-data --depth=1; then
+            git worktree add --detach "$RUNNER_TEMP/market-state" FETCH_HEAD
+            if [ -d "$RUNNER_TEMP/market-state/data" ]; then
+              cp -a "$RUNNER_TEMP/market-state/data/." web/data/
+            fi
+          else
+            echo 'No market snapshots yet. Publishing the labelled demo.'
+          fi
+      - name: Test frontend utilities
+        run: node --test tests/*.test.mjs
+      - name: Build static site
+        run: npm run build
+      - name: Check Pages artifact size
+        shell: bash
+        run: |
+          size=$(du -sb dist | cut -f1)
+          test "$size" -lt 943718400 || { echo 'Pages artifact exceeds 900 MiB'; exit 1; }
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
