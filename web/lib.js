@@ -7,7 +7,10 @@ export function itemMetadata(data) {
   if (!data || typeof data.name !== 'string' || !data.name.trim()) return null;
   const icon = typeof data.icon === 'string' && /^[a-z0-9_]+$/i.test(data.icon) ? `https://wow.zamimg.com/images/wow/icons/medium/${data.icon}.jpg` : null;
   const quality = Number.isInteger(data.quality) && data.quality >= 0 && data.quality <= 5 ? data.quality : null;
-  return {name: data.name, icon, quality};
+  const tooltip = typeof data.tooltip === 'string' ? data.tooltip : '';
+  const classMatch = tooltip.match(/<!--scstart(\d+):\d+-->/);
+  const levelMatch = tooltip.match(/<!--rlvl-->(\d+)/);
+  return {name: data.name, icon, quality, classId: classMatch ? Number(classMatch[1]) : null, requiredLevel: levelMatch ? Number(levelMatch[1]) : null, metadataVersion: 2};
 }
 export function qualityClass(quality) { return Number.isInteger(quality) && quality >= 0 && quality <= 5 ? `quality-${quality}` : ''; }
 export function craftOutputChoices(selected, recipe) {
@@ -32,10 +35,19 @@ export function historyPoints(history, id, days, now) {
     .filter(p => p.time >= now - days * 86400).sort((a, b) => a.time - b.time);
 }
 const itemNameCollator = new Intl.Collator('ru', {numeric: true});
-export function filterItems(items, names, query, favorites, favoritesOnly, sortKey, direction) {
+export function filterItems(items, names, query, favorites, favoritesOnly, sortKey, direction, filters = {}) {
   const search = query.trim().toLocaleLowerCase();
   const terms = search ? search.split(/\s+/) : [];
-  return Object.entries(items || {}).filter(([id]) => (!favoritesOnly || favorites.has(id)) && (!terms.length || terms.every(term => id.includes(term) || (names[id]?.name || '').toLocaleLowerCase().includes(term))))
+  return Object.entries(items || {}).filter(([id, values]) => {
+    const meta = names[id] || {};
+    if (filters.quality != null && meta.quality !== filters.quality) return false;
+    if (filters.classId != null && meta.classId !== filters.classId) return false;
+    if (filters.minLevel != null && (meta.requiredLevel == null || meta.requiredLevel < filters.minLevel)) return false;
+    if (filters.maxLevel != null && (meta.requiredLevel == null || meta.requiredLevel > filters.maxLevel)) return false;
+    if (filters.minPrice != null && values[0] < filters.minPrice) return false;
+    if (filters.maxPrice != null && values[0] > filters.maxPrice) return false;
+    return (!favoritesOnly || favorites.has(id)) && (!terms.length || terms.every(term => id.includes(term) || (meta.name || '').toLocaleLowerCase().includes(term)));
+  })
     .sort(([a, av], [b, bv]) => {
       const result = sortKey === 'price' ? av[0] - bv[0] : sortKey === 'volume' ? av[2] - bv[2] : itemNameCollator.compare(names[a]?.name || a, names[b]?.name || b);
       return (result || Number(a) - Number(b)) * direction;

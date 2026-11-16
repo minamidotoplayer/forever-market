@@ -75,3 +75,5 @@ Listing depth is available only in snapshots collected after the depth feature w
 - [GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages) and [Actions billing](https://docs.github.com/en/actions/concepts/billing-and-usage)
 
 Code is available under the [MIT License](LICENSE). World of Warcraft and related marks belong to Blizzard Entertainment.
+
+Auction feeds with the same faction name are combined per region and ruleset. Repeated auction IDs are counted once. Combined history starts with the first combined snapshot; original feed histories remain in the data branch. Category and required-level filters only match items with known metadata.

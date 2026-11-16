@@ -10,6 +10,26 @@ spec.loader.exec_module(collector)
 
 
 class CollectorTest(unittest.TestCase):
+    def test_faction_union_deduplicates_auction_ids(self):
+        row = {'id': 10, 'item': {'id': 42}, 'quantity': 2, 'buyout': 100}
+        rows = collector.unique_auctions([[row], [row, {**row, 'id': 11, 'buyout': 200}]])
+        self.assertEqual(collector.summarize(rows)['42'], [50, 50, 4, 2])
+    def test_same_faction_has_one_market_and_combined_depth(self):
+        class API:
+            def get(self, region, path, namespace='dynamic', optional=False, locale='en_US'):
+                if path.endswith('/ruleset/index'): return {'rulesets': [{'id': 1, 'name': 'PvP'}]}
+                if path.endswith('/auctions/'): return {'auctions': [{'id': 110, 'name': 'Alliance'}, {'id': 111, 'name': 'Alliance'}]}
+                if path.endswith('/commodities'): return {'auctions': []}
+                if namespace == 'static': return {'name': 'Sword'}
+                row = {'id': 10, 'item': {'id': 42}, 'quantity': 2, 'buyout': 100}
+                return {'auctions': [row] if path.endswith('/110') else [row, {**row, 'id': 11, 'buyout': 200}]}
+        with tempfile.TemporaryDirectory() as directory, patch.object(collector, 'ROOT', Path(directory)):
+            collector.collect(API(), ['eu'])
+            houses = collector.read_json(Path(directory) / 'index.json', {})['regions'][0]['rulesets'][0]['houses']
+            self.assertEqual(len(houses), 1)
+            market = collector.read_json(Path(directory) / 'markets' / (houses[0]['key'] + '.json'), {})
+            self.assertEqual(market['items']['42'], [50, 50, 4, 2])
+            self.assertEqual(len(market['depth']['42']), 2)
     def test_fallback_name_used_only_when_blizzard_has_no_name(self):
         with patch.object(collector, 'request_json', return_value={'name': 'Brawler Gloves'}):
             self.assertEqual(collector.fallback_item_name(720), 'Brawler Gloves')
