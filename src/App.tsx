@@ -32,6 +32,7 @@ export function App() {
   const [basket, setBasket] = useState<Basket>(() =>
     readStored("fm-basket", {}),
   );
+  const basketUnits = Object.values(basket).reduce((sum, qty) => sum + qty, 0);
   const [settings, setSettings] = useState(false);
   const [visible, setVisible] = useState<string[]>([]);
   const onVisible = useCallback(
@@ -76,6 +77,9 @@ export function App() {
       }),
     [],
   );
+  const addToBasket = useCallback((id: string) => {
+    if (id) setBasket((old) => ({ ...old, [id]: (old[id] || 0) + 1 }));
+  }, []);
   const addNames = useCallback(
     (incoming: Catalogue) =>
       data.setNames((old) => {
@@ -154,6 +158,26 @@ export function App() {
           >
             ☆ {t("Favorites", "Избранное")}{" "}
             <span className="fav-count">{favorites.size}</span>
+          </button>
+          <button
+            className="nav-item"
+            aria-label={t(
+              `Open basket (${basketUnits} units)`,
+              `Открыть корзину (${basketUnits} шт.)`,
+            )}
+            onClick={() => {
+              const panel = document.getElementById(
+                "shopping-basket",
+              ) as HTMLDetailsElement | null;
+              if (panel) {
+                panel.open = true;
+                panel.querySelector("summary")?.focus();
+                panel.scrollIntoView?.({ block: "start" });
+              }
+            }}
+          >
+            {t("Basket", "Корзина")}{" "}
+            <span className="fav-count">{basketUnits}</span>
           </button>
         </nav>
         <select
@@ -306,6 +330,8 @@ export function App() {
               names={names}
               selected={selectedId}
               onSelect={setSelected}
+              onAdd={addToBasket}
+              basket={basket}
               favorites={favorites}
               onFavorite={favorite}
               favoritesOnly={favoritesOnly}
@@ -320,13 +346,7 @@ export function App() {
               history={data.history}
               favorite={favorites.has(selectedId)}
               onFavorite={() => favorite(selectedId)}
-              onAdd={() => {
-                if (selectedId)
-                  setBasket((old) => ({
-                    ...old,
-                    [selectedId]: (old[selectedId] || 0) + 1,
-                  }));
-              }}
+              onAdd={() => addToBasket(selectedId)}
               t={t}
               language={language}
             />

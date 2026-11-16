@@ -106,7 +106,7 @@ export function BasketPanel({
     }
   }
   return (
-    <details className="panel basket-panel">
+    <details className="panel basket-panel" id="shopping-basket">
       <summary className="basket-summary">
         {t("Shopping basket & crafting", "Корзина и крафт")}{" "}
         <span>{entries.length}</span>

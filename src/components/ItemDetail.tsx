@@ -221,8 +221,8 @@ export function ItemDetail({
   );
   const observed = points.filter((p) => p.values);
   const prices = observed.map((p) => p.values![metric]);
-  const first = observed[0]?.values?.[metric],
-    last = observed.at(-1)?.values?.[metric];
+  const first = observed[0]?.values?.[0],
+    last = observed.at(-1)?.values?.[0];
   const change =
     first && last && observed.length > 1 ? (last / first - 1) * 100 : null;
   const quote = quoteDepth(market?.depth?.[id], qty);
@@ -274,7 +274,13 @@ export function ItemDetail({
         <div>
           <Money value={values?.[0]} />
         </div>
-        <span className="change">
+        <span
+          className="change"
+          title={t(
+            "Change between the first and last recorded minimum in the selected period",
+            "Изменение между первым и последним минимумом за выбранный период",
+          )}
+        >
           {change == null
             ? t(
                 "Not enough observations to compare",

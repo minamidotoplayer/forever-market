@@ -120,6 +120,27 @@ test("English app has no Russian UI and reuses saved preferences", async () => {
         }),
       ),
     );
+    const selectedRow = view.container.querySelector(
+      'tr[aria-selected="true"]',
+    );
+    const quickAdd = view.getByRole("button", {
+      name: "Add to basket: Dreamfoil",
+      exact: true,
+    });
+    fireEvent.click(quickAdd);
+    fireEvent.click(quickAdd);
+    assert.equal(JSON.parse(localStorage.getItem("fm-basket"))["2"], 2);
+    assert.equal(
+      view.container.querySelector('tr[aria-selected="true"]'),
+      selectedRow,
+    );
+    assert.equal(quickAdd.querySelector(".basket-count").textContent, "2");
+    const openBasket = view.getByRole("button", {
+      name: "Open basket (2 units)",
+      exact: true,
+    });
+    fireEvent.click(openBasket);
+    assert.equal(view.container.querySelector(".basket-panel").open, true);
     assert.equal(/[А-Яа-яЁё]/.test(view.container.textContent), false);
     fireEvent.change(view.getByLabelText("Language"), {
       target: { value: "ru" },
@@ -465,5 +486,86 @@ test("price statistics keep coin units inline instead of stacking label styles",
   } finally {
     cleanup();
     stylesheet.remove();
+  }
+});
+
+test("minimum-price change stays tied to minimum when chart switches to median", () => {
+  const now = Math.floor(Date.now() / 1000);
+  const view = render(
+    React.createElement(ItemDetail, {
+      id: "1",
+      names,
+      market,
+      history: {
+        hourly: {
+          [now - 7200]: { 1: [100, 150] },
+          [now - 3600]: { 1: [200, 600] },
+        },
+        daily: {},
+      },
+      favorite: false,
+      onFavorite: () => {},
+      onAdd: () => {},
+      t: (en) => en,
+      language: "en",
+    }),
+  );
+  try {
+    assert.equal(
+      view.container.querySelector(".change").textContent,
+      "+100.0%",
+    );
+    fireEvent.change(view.getByLabelText("Chart metric"), {
+      target: { value: "1" },
+    });
+    assert.equal(
+      view.container.querySelector(".change").textContent,
+      "+100.0%",
+    );
+  } finally {
+    cleanup();
+  }
+});
+
+test("active filters stay visible when their controls are closed and can be removed", () => {
+  const view = render(
+    React.createElement(Listings, {
+      market,
+      names,
+      selected: "1",
+      onSelect: () => {},
+      onAdd: () => {},
+      favorites: new Set(),
+      onFavorite: () => {},
+      favoritesOnly: false,
+      t: (en) => en,
+      language: "en",
+      onVisible: () => {},
+    }),
+  );
+  try {
+    const controls = view.container.querySelector(".auction-filters");
+    controls.open = true;
+    fireEvent.change(view.getByLabelText("Quality"), {
+      target: { value: "2" },
+    });
+    controls.open = false;
+    assert.ok(controls.querySelector("summary").textContent.includes("1"));
+    fireEvent.click(
+      view.getByRole("button", {
+        name: "Remove filter: Quality: Uncommon",
+        exact: true,
+      }),
+    );
+    assert.ok(view.getByText("Dreamfoil"));
+    assert.equal(
+      view.queryByRole("button", {
+        name: "Remove filter: Quality: Uncommon",
+        exact: true,
+      }),
+      null,
+    );
+  } finally {
+    cleanup();
   }
 });

@@ -3,6 +3,7 @@ import { CategoryTree } from "./CategoryTree";
 import { csvValue, filterItems } from "../lib";
 import { Money, ItemIcon, qualityClass } from "./Common";
 import type {
+  Basket,
   Catalogue,
   Filters,
   Language,
@@ -15,6 +16,8 @@ interface Props {
   names: Catalogue;
   selected: string;
   onSelect: (id: string) => void;
+  onAdd: (id: string) => void;
+  basket?: Basket;
   favorites: Set<string>;
   onFavorite: (id: string) => void;
   favoritesOnly: boolean;
@@ -30,6 +33,8 @@ const Row = memo(function Row({
   favorite,
   onSelect,
   onFavorite,
+  onAdd,
+  basketCount,
   t,
 }: {
   id: string;
@@ -39,6 +44,8 @@ const Row = memo(function Row({
   favorite: boolean;
   onSelect: Props["onSelect"];
   onFavorite: Props["onFavorite"];
+  onAdd: Props["onAdd"];
+  basketCount: number;
   t: Translate;
 }) {
   return (
@@ -71,17 +78,54 @@ const Row = memo(function Row({
       </td>
       <td>{values[2].toLocaleString()}</td>
       <td>
-        <button
-          className={`favorite ${favorite ? "saved" : ""}`}
-          aria-label={`${t("Favorite", "Избранное")}: ${meta?.name || id}`}
-          aria-pressed={favorite}
-          onClick={(e) => {
-            e.stopPropagation();
-            onFavorite(id);
-          }}
-        >
-          {favorite ? "★" : "☆"}
-        </button>
+        <div className="listing-actions">
+          <button
+            className={`quick-add ${basketCount ? "in-basket" : ""}`}
+            aria-label={`${t("Add to basket", "В корзину")}: ${meta?.name || id}`}
+            title={t("Add one to basket", "Добавить один в корзину")}
+            onClick={(e) => {
+              e.stopPropagation();
+              onAdd(id);
+            }}
+          >
+            <svg
+              width="17"
+              height="17"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.7"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M3 3h2l2.4 11.4a2 2 0 0 0 2 1.6H18a2 2 0 0 0 2-1.6L21 7H6" />
+              <circle cx="10" cy="21" r="1" />
+              <circle cx="18" cy="21" r="1" />
+            </svg>
+            {basketCount > 0 && (
+              <span className="basket-count" aria-hidden="true">
+                {basketCount > 99 ? "99+" : basketCount}
+              </span>
+            )}
+          </button>
+          <span className="sr-only" role="status">
+            {basketCount > 0
+              ? `${meta?.name || id}: ${basketCount} ${t("in basket", "в корзине")}`
+              : ""}
+          </span>
+          <button
+            className={`favorite ${favorite ? "saved" : ""}`}
+            aria-label={`${t("Favorite", "Избранное")}: ${meta?.name || id}`}
+            aria-pressed={favorite}
+            onClick={(e) => {
+              e.stopPropagation();
+              onFavorite(id);
+            }}
+          >
+            {favorite ? "★" : "☆"}
+          </button>
+        </div>
       </td>
     </tr>
   );
@@ -91,6 +135,8 @@ export function Listings({
   names,
   selected,
   onSelect,
+  onAdd,
+  basket = {},
   favorites,
   onFavorite,
   favoritesOnly,
@@ -170,6 +216,28 @@ export function Listings({
     setFilters((old) => ({ ...old, classId, subclassId }));
     setPage(1);
   };
+  const qualityLabels = [
+    t("Poor", "Низкое"),
+    t("Common", "Обычное"),
+    t("Uncommon", "Необычное"),
+    t("Rare", "Редкое"),
+    t("Epic", "Эпическое"),
+    t("Legendary", "Легендарное"),
+  ];
+  const activeFilters = (
+    [
+      ["quality", t("Quality", "Качество")],
+      ["minLevel", t("Minimum level", "Минимальный уровень")],
+      ["maxLevel", t("Maximum level", "Максимальный уровень")],
+      ["minPrice", t("Minimum price", "Минимальная цена")],
+      ["maxPrice", t("Maximum price", "Максимальная цена")],
+    ] as const
+  )
+    .filter(([key]) => filters[key] != null)
+    .map(([key, label]) => ({
+      key,
+      label: `${label}: ${key === "quality" ? qualityLabels[filters[key]!] : key === "minPrice" || key === "maxPrice" ? `${filters[key]! / 10000} g` : filters[key]}`,
+    }));
   const exportCsv = () => {
     const rows = [
       [
@@ -235,7 +303,10 @@ export function Listings({
         />
       </div>
       <details className="auction-filters">
-        <summary>{t("Filters", "Фильтры")}</summary>
+        <summary>
+          {t("Filters", "Фильтры")}
+          {activeFilters.length > 0 && ` · ${activeFilters.length}`}
+        </summary>
         <div className="filter-grid">
           <label>
             {t("Quality", "Качество")}
@@ -323,6 +394,35 @@ export function Listings({
           </button>
         </div>
       </details>
+      {activeFilters.length > 0 && (
+        <div
+          className="active-filters"
+          aria-label={t("Active filters", "Активные фильтры")}
+        >
+          {activeFilters.map(({ key, label }) => (
+            <button
+              key={key}
+              aria-label={`${t("Remove filter", "Удалить фильтр")}: ${label}`}
+              onClick={() => changeFilter(key, "")}
+            >
+              {label}
+              <span aria-hidden="true">×</span>
+            </button>
+          ))}
+          <button
+            className="clear-filters"
+            onClick={() => {
+              setFilters((old) => ({
+                classId: old.classId,
+                subclassId: old.subclassId,
+              }));
+              setPage(1);
+            }}
+          >
+            {t("Clear filters", "Сбросить фильтры")}
+          </button>
+        </div>
+      )}
       <div className="listing-layout">
         <CategoryTree
           filters={filters}
@@ -337,7 +437,7 @@ export function Listings({
                 <col />
                 <col className="price-column" />
                 <col className="quantity-column" />
-                <col className="favorite-column" />
+                <col className="actions-column" />
               </colgroup>
               <thead>
                 <tr>
@@ -378,7 +478,7 @@ export function Listings({
                   ))}
                   <th>
                     <span className="sr-only">
-                      {t("Favorite", "Избранное")}
+                      {t("Item actions", "Действия с предметом")}
                     </span>
                   </th>
                 </tr>
@@ -394,6 +494,8 @@ export function Listings({
                     favorite={favorites.has(id)}
                     onSelect={onSelect}
                     onFavorite={onFavorite}
+                    onAdd={onAdd}
+                    basketCount={basket[id] || 0}
                     t={t}
                   />
                 ))}
