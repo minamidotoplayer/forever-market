@@ -915,11 +915,54 @@ test("tooltip stays inside a narrow viewport near its bottom right corner", asyn
     assert.ok(Number.parseFloat(tooltip.style.left) >= 12);
     assert.ok(Number.parseFloat(tooltip.style.left) + 320 <= 348);
     assert.ok(Number.parseFloat(tooltip.style.top) + 200 <= 388);
+    fireEvent.mouseEnter(view.container.querySelector(".item-cell"), {
+      clientX: 340,
+      clientY: 380,
+    });
+    await waitFor(() => assert.equal(tooltip.style.left, "12px"));
+    assert.equal(tooltip.style.top, "164px");
   } finally {
     cleanup();
     globalThis.fetch = original;
     HTMLElement.prototype.getBoundingClientRect = measure;
     window.innerWidth = width;
     window.innerHeight = height;
+  }
+});
+
+test("hover tooltip follows the cursor and stops moving when pinned", async () => {
+  const { ItemTooltip } = await import("../src/components/ItemTooltip.tsx");
+  const original = fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({ tooltip: "<b>Cursor item stats</b>" }),
+  });
+  const view = render(
+    React.createElement(
+      ItemTooltip,
+      { id: "9010", meta: { name: "Cursor item" }, t: (en) => en },
+      () => React.createElement("button", null, "Cursor name"),
+    ),
+  );
+  try {
+    const trigger = view.container.querySelector(".item-cell");
+    fireEvent.mouseEnter(trigger, { clientX: 100, clientY: 120 });
+    await view.findByText("Cursor item stats");
+    const tooltip = view.getByRole("tooltip");
+    assert.equal(tooltip.style.left, "116px");
+    assert.equal(tooltip.style.top, "136px");
+    fireEvent.mouseMove(trigger, { clientX: 200, clientY: 230 });
+    await waitFor(() => assert.equal(tooltip.style.left, "216px"));
+    assert.equal(tooltip.style.top, "246px");
+    fireEvent.click(
+      view.getByRole("button", { name: "Item details: Cursor item" }),
+    );
+    const pinned = view.getByRole("dialog");
+    const position = [pinned.style.left, pinned.style.top];
+    fireEvent.mouseMove(trigger, { clientX: 300, clientY: 330 });
+    assert.deepEqual([pinned.style.left, pinned.style.top], position);
+  } finally {
+    cleanup();
+    globalThis.fetch = original;
   }
 });

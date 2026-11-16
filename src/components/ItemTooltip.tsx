@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import type { ReactNode, MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { loadItemTooltip } from "../tooltip";
 import { ItemIcon, qualityClass } from "./Common";
@@ -27,6 +27,9 @@ export function ItemTooltip({
   const closeButton = useRef<HTMLButtonElement>(null);
   const opening = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const closing = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const cursor = useRef<{ x: number; y: number } | null>(null);
+  const frame = useRef<number | undefined>(undefined);
+  const reposition = useRef<() => void>(() => {});
   const focused = useRef(false);
   const suppressFocus = useRef(false);
   const [open, setOpen] = useState(false);
@@ -40,11 +43,15 @@ export function ItemTooltip({
   function clearTimers() {
     clearTimeout(opening.current);
     clearTimeout(closing.current);
+    if (frame.current !== undefined)
+      window.cancelAnimationFrame?.(frame.current);
+    frame.current = undefined;
   }
   function hide(restoreFocus = false) {
     clearTimers();
     setOpen(false);
     setPinned(false);
+    cursor.current = null;
     if (
       restoreFocus &&
       inspect.current &&
@@ -61,6 +68,19 @@ export function ItemTooltip({
       new window.CustomEvent("fm-tooltip-open", { detail: tooltipId }),
     );
     setOpen(true);
+  }
+  function trackMouse(event: ReactMouseEvent<HTMLDivElement>) {
+    // Portal events bubble through this trigger too: don't chase a pointer
+    // that has entered the tooltip to read or scroll its contents.
+    if (pinned || panel.current?.contains(event.target as Node)) return;
+    cursor.current = { x: event.clientX, y: event.clientY };
+    if (!open || frame.current !== undefined) return;
+    if (window.requestAnimationFrame) {
+      frame.current = window.requestAnimationFrame(() => {
+        frame.current = undefined;
+        reposition.current();
+      });
+    } else reposition.current();
   }
   function leave() {
     clearTimeout(opening.current);
@@ -119,20 +139,32 @@ export function ItemTooltip({
       const box = panel.current?.getBoundingClientRect();
       if (!rect || !box) return;
       const width = Math.min(320, window.innerWidth - 24);
-      const right = rect.right + 10;
-      const left =
-        right + width <= window.innerWidth - 12
-          ? right
-          : Math.min(
-              window.innerWidth - width - 12,
-              Math.max(12, rect.left - width - 10),
-            );
+      const point = cursor.current;
+      const right = point ? point.x + 16 : rect.right + 10;
+      const left = Math.max(
+        12,
+        Math.min(
+          window.innerWidth - width - 12,
+          right + width <= window.innerWidth - 12
+            ? right
+            : point
+              ? point.x - width - 16
+              : rect.left - width - 10,
+        ),
+      );
+      const below = point ? point.y + 16 : rect.top;
       const top = Math.max(
         12,
-        Math.min(rect.top, window.innerHeight - box.height - 12),
+        Math.min(
+          window.innerHeight - box.height - 12,
+          point && below + box.height > window.innerHeight - 12
+            ? point.y - box.height - 16
+            : below,
+        ),
       );
       setPosition({ left, top });
     };
+    reposition.current = place;
     place();
     window.addEventListener("resize", place);
     window.addEventListener("scroll", place, true);
@@ -145,12 +177,20 @@ export function ItemTooltip({
     <div
       ref={anchor}
       className={className}
-      onMouseEnter={() => {
+      onMouseEnter={(event) => {
+        if (pinned || panel.current?.contains(event.target as Node)) return;
+        trackMouse(event);
         clearTimeout(closing.current);
         opening.current = setTimeout(show, 160);
       }}
+      onMouseMove={trackMouse}
       onMouseLeave={leave}
-      onFocusCapture={() => {
+      onFocusCapture={(event) => {
+        if (
+          !panel.current?.contains(event.target as Node) &&
+          event.target.matches(":focus-visible")
+        )
+          cursor.current = null;
         focused.current = true;
         if (suppressFocus.current) {
           suppressFocus.current = false;
