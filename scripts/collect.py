@@ -2,8 +2,6 @@
 import base64
 import collections
 from concurrent.futures import ThreadPoolExecutor
-import datetime as dt
-import hashlib
 import json
 import os
 import re
@@ -15,6 +13,17 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1] / 'web' / 'data'
 REGIONS = ('eu', 'us', 'kr', 'tw')
+# The API index exposes every house for every URL ruleset. House IDs identify
+# separate economies; equal faction names do not imply a shared market.
+# Checked against per-house markets: https://hyjal.cc/auctions/eu/pve/alliance
+HOUSE_RULESETS = {
+    110: 1, 113: 1, 116: 1,       # PvP
+    111: 2, 114: 2, 117: 2,       # Normal
+    119: 3, 120: 3, 121: 3,       # Roleplay
+    123: 15, 124: 15, 125: 15,    # Roleplay PvP
+    112: None, 115: None, 118: None,  # Inactive, not assigned to a live ruleset.
+}
+
 
 
 def write_json(path, data):
@@ -200,10 +209,10 @@ def collect(api, regions):
     old_index = read_json(ROOT / 'index.json', {'regions': []})
     old_regions = {region['id']: region for region in old_index.get('regions', [])}
     names = read_json(ROOT / 'items.json', {})
-    output = {'version': 1, 'generatedAt': now, 'regions': [], 'errors': []}
+    output = {'version': 2, 'marketIdentityVersion': 2, 'generatedAt': now, 'regions': [], 'errors': []}
     known_ids = set()
     successful = 0
-    # Deduplicate canonical URLs within each ruleset while retaining raw IDs for the faction union.
+    # A house belongs to exactly one ruleset, regardless of the index URL.
     for region in regions:
         region_started = time.monotonic()
         try:
@@ -211,7 +220,6 @@ def collect(api, regions):
             entry = {'id': region, 'rulesets': []}
             for rule in rulesets:
                 raw_feeds = {}
-                group_feeds = collections.defaultdict(list)
                 rule_id = int(rule['id'])
                 rule_name = localized_name(rule.get('name'))
                 if not rule_name:
@@ -225,13 +233,19 @@ def collect(api, regions):
                     continue
                 for house in houses.get('auctions', []):
                     house_id = int(house['id'])
+                    if house_id not in HOUSE_RULESETS:
+                        raise RuntimeError(f'Unmapped auction house {house_id}; refusing to merge markets')
+                    if HOUSE_RULESETS[house_id] != rule_id:
+                        continue
                     path = urllib.parse.urlsplit(house.get('key', {}).get('href', f'/data/wow/ruleset/{rule_id}/auctions/{house_id}')).path
-                    key = f'{region}-{hashlib.sha256(path.encode()).hexdigest()[:16]}'
+                    key = f'{region}-ruleset-{rule_id}-house-{house_id}'
                     try:
                         if path not in raw_feeds:
                             data = api.get(region, path, optional=True)
                             if data is None:
                                 raise RuntimeError('Auction house is not available (404)')
+                            if data.get('id', house_id) != house_id:
+                                raise RuntimeError('Auction response identifies a different house')
                             auctions = data.get('auctions', [])
                             if isinstance(auctions, dict):
                                 auctions = api.get(region, auctions['href']).get('auctions', [])
@@ -244,29 +258,21 @@ def collect(api, regions):
                         known_ids.update(str(row['item']['id']) for row in rows if row.get('item', {}).get('id'))
                         successful += 1
                         name = localized_name(house.get('name')) or str(house_id)
-                        group_feeds[name].append(rows)
-                        rule_entry['houses'].append({'id': house_id, 'name': name})
+                        prices = summarize(rows)
+                        write_json(ROOT / 'markets' / f'{key}.json', {'updatedAt': now, 'items': prices, 'depth': price_depth(rows), 'rulesetId': rule_id, 'houseId': house_id})
+                        history_path = ROOT / 'history' / f'{key}.json'
+                        history = read_json(history_path, {'hourly': {}, 'daily': {}})
+                        write_json(history_path, update_history(history, prices, now))
+                        rule_entry['houses'].append({'id': house_id, 'name': name, 'key': key, 'updatedAt': now})
                     except (RuntimeError, KeyError, ValueError) as error:
                         output['errors'].append(f'{region}/{rule_id}/{house_id}: {error}')
-                        raise RuntimeError('Incomplete faction snapshot; preserving previous region') from None
-                grouped = []
-                for name, feeds in group_feeds.items():
-                    members = [house for house in rule_entry['houses'] if house['name'] == name]
-                    key = f'{region}-faction-{hashlib.sha256(f"{rule_id}/{name}".encode()).hexdigest()[:16]}'
-                    rows = unique_auctions(feeds)
-                    prices = summarize(rows)
-                    write_json(ROOT / 'markets' / f'{key}.json', {'updatedAt': now, 'items': prices, 'depth': price_depth(rows)})
-                    history_path = ROOT / 'history' / f'{key}.json'
-                    history = read_json(history_path, {'hourly': {}, 'daily': {}})
-                    write_json(history_path, update_history(history, prices, now))
-                    grouped.append({'id': members[0]['id'], 'name': name, 'key': key, 'updatedAt': now})
-                rule_entry['houses'] = grouped
+                        raise RuntimeError('Incomplete ruleset snapshot; preserving previous region') from None
                 entry['rulesets'].append(rule_entry)
             output['regions'].append(entry)
             print(f'Region {region}: {time.monotonic() - region_started:.1f}s', flush=True)
         except (RuntimeError, KeyError, ValueError) as error:
             output['errors'].append(f'{region}: {error}')
-            if region in old_regions:
+            if region in old_regions and old_index.get('marketIdentityVersion') == 2:
                 previous = old_regions[region]
                 previous['stale'] = True
                 output['regions'].append(previous)

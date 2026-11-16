@@ -41,7 +41,7 @@ Without credentials, the workflow publishes an explicitly labelled demo with fic
 
 The collector runs at minute 23 of every hour. GitHub may delay or skip scheduled runs. Each market shows its actual snapshot time and marks old data; failed requests preserve the last successful snapshot. A scheduled workflow in a public repository can be disabled after a period of repository inactivity.
 
-EU, US, KR and TW are supported. China uses a separate platform and is not connected. The API currently may return identical houses for different rulesets; feeds with matching faction names are combined within each region and ruleset, deduplicating auction IDs.
+EU, US, KR and TW are supported. China uses a separate platform and is not connected. The API currently lists every auction house under every ruleset URL. Markets must be selected by house identity, never by equal faction names: PvP uses 110/113/116; Normal 111/114/117; Roleplay 119/120/121; Roleplay PvP 123/124/125 (Alliance/Horde/Blackwater). Inactive 112/115/118 are excluded. Unknown house IDs fail collection rather than being mixed into an economy. The mapping is checked against [per-house market identities](https://hyjal.cc/auctions/eu/pve/alliance).
 
 ## Run locally
 
@@ -79,7 +79,7 @@ Listing depth is available only in snapshots collected after the depth feature w
 
 Code is available under the [MIT License](LICENSE). World of Warcraft and related marks belong to Blizzard Entertainment.
 
-Auction feeds with the same faction name are combined per region and ruleset. Repeated auction IDs are counted once. Combined history starts with the first combined snapshot; original feed histories remain in the data branch. Category and required-level filters only match items with known metadata.
+Each region/ruleset/house has an independent snapshot and history. History starts with the first correctly separated snapshot; earlier combined histories remain archived under their legacy keys and are never appended to the separated histories. Category and required-level filters only match items with known metadata.
 
 Deployment: pushes to main run Publish site using the latest market-data snapshot. Collect market data runs hourly or manually, then triggers Publish site after success. Metadata lookups use four workers; the collector logs region and metadata timings.
 

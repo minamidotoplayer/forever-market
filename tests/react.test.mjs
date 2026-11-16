@@ -663,6 +663,11 @@ function RulesetHarness() {
 test("changing ruleset loads its own snapshot and replaces the previous price", async () => {
   const original = fetch;
   localStorage.clear();
+  window.history.replaceState(null, "", "/forever-market/");
+  localStorage.setItem(
+    "fm-selection",
+    JSON.stringify({ region: "eu", ruleset: "1", house: "113" }),
+  );
   const paths = [];
   globalThis.fetch = async (url) => {
     const path = String(url);
@@ -678,7 +683,18 @@ test("changing ruleset loads its own snapshot and replaces the previous price", 
                   rulesets: [1, 2].map((id) => ({
                     id,
                     name: String(id),
-                    houses: [{ id: 110, name: "Alliance", key: `eu-${id}` }],
+                    houses: [
+                      {
+                        id: id === 1 ? 110 : 111,
+                        name: "Alliance",
+                        key: `eu-${id}-alliance`,
+                      },
+                      {
+                        id: id === 1 ? 113 : 114,
+                        name: "Horde",
+                        key: `eu-${id}-horde`,
+                      },
+                    ],
                   })),
                 },
               ],
@@ -689,7 +705,18 @@ test("changing ruleset loads its own snapshot and replaces the previous price", 
               ? { hourly: {}, daily: {} }
               : {
                   updatedAt: 1,
-                  items: { 1: [path.includes("eu-2") ? 200 : 100, 1, 1, 1] },
+                  items: {
+                    1: [
+                      path.includes("eu-2-horde")
+                        ? 200
+                        : path.includes("eu-2-alliance")
+                          ? 999
+                          : 100,
+                      1,
+                      1,
+                      1,
+                    ],
+                  },
                 },
     };
   };
@@ -702,7 +729,7 @@ test("changing ruleset loads its own snapshot and replaces the previous price", 
     await waitFor(() =>
       assert.equal(view.getByRole("status").textContent, "200"),
     );
-    assert.ok(paths.some((path) => path.includes("markets/eu-2.json")));
+    assert.ok(paths.some((path) => path.includes("markets/eu-2-horde.json")));
   } finally {
     cleanup();
     globalThis.fetch = original;

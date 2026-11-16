@@ -84,8 +84,13 @@ export function useMarket(source: string, demo: boolean) {
     const rule =
       region?.rulesets.find((r) => String(r.id) === selection.ruleset) ||
       region?.rulesets[0];
+    const previousHouse = index.regions
+      .flatMap((region) => region.rulesets)
+      .flatMap((rule) => rule.houses)
+      .find((house) => String(house.id) === selection.house);
     const house =
       rule?.houses.find((h) => String(h.id) === selection.house) ||
+      rule?.houses.find((h) => h.name === previousHouse?.name) ||
       rule?.houses[0];
     return { region, rule, house };
   }, [index, selection]);

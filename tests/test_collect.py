@@ -47,22 +47,34 @@ class CollectorTest(unittest.TestCase):
         row = {'id': 10, 'item': {'id': 42}, 'quantity': 2, 'buyout': 100}
         rows = collector.unique_auctions([[row], [row, {**row, 'id': 11, 'buyout': 200}]])
         self.assertEqual(collector.summarize(rows)['42'], [50, 50, 4, 2])
-    def test_same_faction_has_one_market_and_combined_depth(self):
+    def test_global_house_index_does_not_mix_ruleset_economies(self):
         class API:
             def get(self, region, path, namespace='dynamic', optional=False, locale='en_US'):
-                if path.endswith('/ruleset/index'): return {'rulesets': [{'id': 1, 'name': 'PvP'}]}
-                if path.endswith('/auctions/'): return {'auctions': [{'id': 110, 'name': 'Alliance'}, {'id': 111, 'name': 'Alliance'}]}
+                if path.endswith('/ruleset/index'):
+                    return {'rulesets': [{'id': 1, 'name': 'PvP'}, {'id': 2, 'name': 'Normal'}, {'id': 3, 'name': 'Roleplay'}, {'id': 15, 'name': 'Roleplay PvP'}]}
+                if path.endswith('/auctions/'):
+                    return {'auctions': [{'id': id, 'name': 'Alliance'} for id in [110, 111, 112, 119, 123]]}
                 if path.endswith('/commodities'): return {'auctions': []}
                 if namespace == 'static': return {'name': 'Sword'}
-                row = {'id': 10, 'item': {'id': 42}, 'quantity': 2, 'buyout': 100}
-                return {'auctions': [row] if path.endswith('/110') else [row, {**row, 'id': 11, 'buyout': 200}]}
+                house = int(path.rsplit('/', 1)[-1])
+                return {'auctions': [{'id': 10, 'item': {'id': 42}, 'quantity': 1, 'buyout': house}]}
         with tempfile.TemporaryDirectory() as directory, patch.object(collector, 'ROOT', Path(directory)):
+            legacy = {'hourly': {'1': {'42': [9999, 9999, 99]}}, 'daily': {}}
+            collector.write_json(Path(directory) / 'history/eu-faction-legacy.json', legacy)
             collector.collect(API(), ['eu'])
-            houses = collector.read_json(Path(directory) / 'index.json', {})['regions'][0]['rulesets'][0]['houses']
-            self.assertEqual(len(houses), 1)
-            market = collector.read_json(Path(directory) / 'markets' / (houses[0]['key'] + '.json'), {})
-            self.assertEqual(market['items']['42'], [50, 50, 4, 2])
-            self.assertEqual(len(market['depth']['42']), 2)
+            index = collector.read_json(Path(directory) / 'index.json', {})
+            houses = [rule['houses'] for rule in index['regions'][0]['rulesets']]
+            self.assertEqual([[house['id'] for house in group] for group in houses], [[110], [111], [119], [123]])
+            for group in houses:
+                house = group[0]
+                market = collector.read_json(Path(directory) / 'markets' / (house['key'] + '.json'), {})
+                self.assertEqual(market['items']['42'], [house['id'], house['id'], 1, 1])
+                self.assertNotIn('faction-', house['key'])
+                history = collector.read_json(Path(directory) / 'history' / (house['key'] + '.json'), {})
+                self.assertEqual(len(history['hourly']), 1)
+                self.assertNotIn('1', history['hourly'])
+            self.assertEqual(collector.read_json(Path(directory) / 'history/eu-faction-legacy.json', {}), legacy)
+
     def test_fallback_name_used_only_when_blizzard_has_no_name(self):
         with patch.object(collector, 'request_json', return_value={'name': 'Brawler Gloves'}):
             self.assertEqual(collector.fallback_item_name(720), 'Brawler Gloves')
@@ -118,12 +130,12 @@ class CollectorTest(unittest.TestCase):
                 if path.endswith('ruleset/index'):
                     return {'rulesets': [{'id': 1, 'name': 'PvP'}, {'id': 2, 'name': 'Normal'}]}
                 if path.endswith('/auctions/'):
-                    return {'auctions': [{'id': 110, 'name': 'Alliance'}]}
+                    return {'auctions': [{'id': 110, 'name': 'Alliance'}, {'id': 111, 'name': 'Alliance'}]}
                 if path.endswith('/commodities'):
                     return {'auctions': []}
                 if namespace == 'static':
                     return {'name': 'Test item'}
-                price = 100 if '/1/' in path else 200
+                price = 100 if path.endswith('/110') else 200
                 if region == 'us':
                     price *= 2
                 return {'auctions': [{'item': {'id': 42}, 'quantity': 1, 'buyout': price}]}
@@ -137,6 +149,17 @@ class CollectorTest(unittest.TestCase):
                     summary = collector.read_json(Path(directory) / 'markets' / f'{key}.json', {})
                     prices.append(summary['items']['42'][0])
             self.assertEqual(prices, [100, 200, 200, 400])
+
+    def test_unknown_house_never_gets_merged_by_faction_name(self):
+        class API:
+            def get(self, region, path, *args, **kwargs):
+                if path.endswith('ruleset/index'):
+                    return {'rulesets': [{'id': 1, 'name': 'PvP'}]}
+                return {'auctions': [{'id': 999, 'name': 'Alliance'}]}
+        with tempfile.TemporaryDirectory() as directory, patch.object(collector, 'ROOT', Path(directory)):
+            with self.assertRaisesRegex(RuntimeError, 'Unmapped auction house'):
+                collector.collect(API(), ['eu'])
+            self.assertFalse((Path(directory) / 'index.json').exists())
 
     def test_outage_does_not_replace_previous_data(self):
         class FailingAPI:
