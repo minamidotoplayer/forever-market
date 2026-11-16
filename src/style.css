@@ -631,23 +631,30 @@ kbd {
 }
 .detail-stats {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin: 15px 0;
 }
 .detail-stats > div {
-  background: #211a14;
-  border: 1px solid #55412d;
-  padding: 9px;
+  min-width: 0;
+  background: linear-gradient(#2a1e14, #1b130d);
+  border: 1px solid #71502f;
+  box-shadow: inset 0 1px #ffffff08;
+  padding: 10px 12px;
 }
-.detail-stats span {
-  display: block;
-  color: #b9a37e;
-  font-size: 10px;
+.detail-stats dt {
+  color: #c2ac87;
+  font-size: 12px;
+  line-height: 1.35;
 }
-.detail-stats strong {
-  display: block;
-  margin-top: 4px;
+.detail-stats dd {
+  margin: 7px 0 0;
+  color: #f2e1bc;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+  overflow-x: auto;
 }
 .dialog-note,
 .trade-tools,
@@ -1436,35 +1443,29 @@ select option:checked {
   flex: 1;
   min-width: 0;
 }
-.category-path button {
+.category-path > button {
   font-size: 20px;
   padding: 0 4px;
 }
-.category-parent {
+.category-parent.category-choice {
   display: flex;
-  align-items: stretch;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
-.category-parent .category-choice {
-  flex: 1;
-  min-width: 0;
+.category-indicator {
+  flex: 0 0 16px;
+  text-align: center;
 }
-.category-toggle {
-  flex: 0 0 28px;
+.category-breadcrumb {
   padding: 0;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: #bca889;
-}
-.category-toggle:hover {
-  color: #ffe5b5;
-  background: #392819;
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 .selected-group > .category-parent {
   color: #f5d79b;
-}
-.selected-group > .category-parent .category-choice {
-  color: inherit;
 }
 .category-children {
   border-left: 1px solid #614225;

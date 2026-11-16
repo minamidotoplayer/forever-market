@@ -359,15 +359,19 @@ test("category parent selects and expands in one click; child and clear are expl
       .getAttribute("aria-pressed"),
     "true",
   );
+  assert.equal(
+    view
+      .getByRole("button", { name: "Armor", exact: true })
+      .getAttribute("aria-expanded"),
+    "true",
+  );
   fireEvent.click(view.getByRole("button", { name: "Leather", exact: true }));
   assert.ok(
     view
       .getByLabelText("Selected category")
       .textContent.includes("Armor / Leather"),
   );
-  fireEvent.click(
-    view.getByRole("button", { name: "Collapse Armor", exact: true }),
-  );
+  fireEvent.click(view.getByRole("button", { name: "Armor", exact: true }));
   assert.ok(
     view
       .getByLabelText("Selected category")
@@ -375,18 +379,21 @@ test("category parent selects and expands in one click; child and clear are expl
   );
   assert.equal(
     view
-      .getByRole("button", { name: "Expand Armor", exact: true })
+      .getByRole("button", { name: "Armor", exact: true })
       .getAttribute("aria-expanded"),
     "false",
   );
-  fireEvent.click(
-    view.getByRole("button", { name: "Expand Armor", exact: true }),
-  );
+  fireEvent.click(view.getByRole("button", { name: "Armor", exact: true }));
   assert.equal(
     view
       .getByRole("button", { name: "Leather", exact: true })
       .getAttribute("aria-pressed"),
     "true",
+  );
+  fireEvent.click(view.getByRole("button", { name: "All Armor", exact: true }));
+  assert.equal(
+    view.getByLabelText("Selected category").textContent.includes("Leather"),
+    false,
   );
   fireEvent.click(
     view.getByRole("button", { name: "Clear category", exact: true }),
@@ -425,4 +432,38 @@ test("category choice filters listings and clearing restores the market", () => 
   );
   assert.ok(view.getByText("Dreamfoil"));
   cleanup();
+});
+
+const { readFileSync } = await import("node:fs");
+const { ItemDetail } = await import("../src/components/ItemDetail.tsx");
+test("price statistics keep coin units inline instead of stacking label styles", () => {
+  const stylesheet = document.createElement("style");
+  stylesheet.textContent = readFileSync(
+    new URL("../src/style.css", import.meta.url),
+    "utf8",
+  );
+  document.head.append(stylesheet);
+  const view = render(
+    React.createElement(ItemDetail, {
+      id: "1",
+      names,
+      market,
+      history: null,
+      favorite: false,
+      onFavorite: () => {},
+      onAdd: () => {},
+      t: (en) => en,
+      language: "en",
+    }),
+  );
+  try {
+    for (const span of view.container.querySelectorAll(
+      ".detail-stats .money, .detail-stats .money span",
+    )) {
+      assert.notEqual(window.getComputedStyle(span).display, "block");
+    }
+  } finally {
+    cleanup();
+    stylesheet.remove();
+  }
 });

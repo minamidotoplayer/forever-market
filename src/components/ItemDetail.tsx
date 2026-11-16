@@ -323,16 +323,16 @@ export function ItemDetail({
             : t("Daily · UTC", "Дневные · UTC")}
         </span>
       </div>
-      <div className="detail-stats">
+      <dl className="detail-stats">
         {[
-          t("MEDIAN / UNIT", "МЕДИАНА / ШТ."),
-          t("AVAILABLE UNITS", "ЕДИНИЦ В ПРОДАЖЕ"),
-          t("PERIOD LOW", "МИН. ЗА ПЕРИОД"),
-          t("PERIOD HIGH", "МАКС. ЗА ПЕРИОД"),
+          t("Median / unit", "МЕДИАНА / ШТ."),
+          t("Available units", "ЕДИНИЦ В ПРОДАЖЕ"),
+          t("Period low", "МИН. ЗА ПЕРИОД"),
+          t("Period high", "МАКС. ЗА ПЕРИОД"),
         ].map((label, i) => (
           <div key={label}>
-            <span>{label}</span>
-            <strong>
+            <dt>{label}</dt>
+            <dd>
               {i === 1 ? (
                 values?.[2].toLocaleString() || "—"
               ) : (
@@ -348,10 +348,10 @@ export function ItemDetail({
                   }
                 />
               )}
-            </strong>
+            </dd>
           </div>
         ))}
-      </div>
+      </dl>
       <details className="trade-tools">
         <summary>
           {t(

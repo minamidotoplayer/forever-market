@@ -38,7 +38,17 @@ export function CategoryTree({
         aria-label={t("Selected category", "Выбранная категория")}
       >
         <span>
-          {label}
+          {child ? (
+            <button
+              className="category-breadcrumb quiet"
+              aria-label={t(`All ${label}`, `Все: ${label}`)}
+              onClick={() => onChoose(selected!.id, null)}
+            >
+              {label}
+            </button>
+          ) : (
+            label
+          )}
           {child ? ` / ${t(child[2], child[1])}` : ""}
         </span>
         {selected && (
@@ -68,33 +78,21 @@ export function CategoryTree({
               className={`category-group ${active ? "selected-group" : ""}`}
               key={category.id}
             >
-              <div className="category-parent">
-                <button
-                  className={`category-choice ${active && filters.subclassId == null ? "active" : ""}`}
-                  aria-pressed={active && filters.subclassId == null}
-                  onClick={() => {
-                    onChoose(category.id, null);
-                    setExpanded((previous) =>
-                      new Set(previous).add(category.id),
-                    );
-                  }}
-                >
-                  {name}
-                </button>
-                <button
-                  className="category-toggle"
-                  aria-label={
-                    open
-                      ? t(`Collapse ${name}`, `Свернуть ${name}`)
-                      : t(`Expand ${name}`, `Развернуть ${name}`)
-                  }
-                  aria-expanded={open}
-                  aria-controls={`category-${category.id}`}
-                  onClick={() => toggle(category.id)}
-                >
-                  <span aria-hidden="true">{open ? "−" : "+"}</span>
-                </button>
-              </div>
+              <button
+                className={`category-choice category-parent ${active && filters.subclassId == null ? "active" : ""}`}
+                aria-pressed={active && filters.subclassId == null}
+                aria-expanded={open}
+                aria-controls={`category-${category.id}`}
+                onClick={() => {
+                  if (!active) onChoose(category.id, null);
+                  toggle(category.id);
+                }}
+              >
+                <span>{name}</span>
+                <span className="category-indicator" aria-hidden="true">
+                  {open ? "−" : "+"}
+                </span>
+              </button>
               <div
                 id={`category-${category.id}`}
                 className="category-children"
