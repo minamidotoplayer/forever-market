@@ -238,7 +238,7 @@ def collect(api, regions):
     if not successful or not output['regions']:
         raise RuntimeError('No auction feeds succeeded; keeping previous data. ' + '; '.join(output['errors']))
     # Bound name resolution per run. Missing lookups get an ID fallback and retry in 7 days.
-    pending = [item_id for item_id in sorted(known_ids, key=int) if item_id not in names or 'filterCheckedAt' not in names[item_id] or 'mediaCheckedAt' not in names[item_id] or (names[item_id].get('missing') and ('fallbackCheckedAt' not in names[item_id] or now - names[item_id].get('checkedAt', 0) > 7 * 86400))]
+    pending = [item_id for item_id in sorted(known_ids, key=int) if item_id not in names or 'subclassId' not in names[item_id] or 'mediaCheckedAt' not in names[item_id] or (names[item_id].get('missing') and ('fallbackCheckedAt' not in names[item_id] or now - names[item_id].get('checkedAt', 0) > 7 * 86400))]
     for item_id in pending[:int(os.environ.get('MAX_NAME_LOOKUPS', '300'))]:
         try:
             item = api.get(regions[0], f'/data/wow/item/{int(item_id)}', 'static', optional=True)
@@ -251,7 +251,7 @@ def collect(api, regions):
             icon = next((asset.get('value') for asset in media.get('assets', []) if asset.get('key') == 'icon' and isinstance(asset.get('value'), str) and asset['value'].startswith('https://')), None)
             item = item or {}
             quality = {'POOR': 0, 'COMMON': 1, 'UNCOMMON': 2, 'RARE': 3, 'EPIC': 4, 'LEGENDARY': 5}.get(item.get('quality', {}).get('type'))
-            names[item_id] = {'name': name or f'Item #{item_id}', 'checkedAt': now, 'missing': not bool(name), 'icon': icon, 'mediaCheckedAt': now, 'fallbackCheckedAt': now, 'source': source, 'filterCheckedAt': now, 'quality': quality, 'classId': item.get('item_class', {}).get('id'), 'requiredLevel': item.get('required_level')}
+            names[item_id] = {'name': name or f'Item #{item_id}', 'checkedAt': now, 'missing': not bool(name), 'icon': icon, 'mediaCheckedAt': now, 'fallbackCheckedAt': now, 'source': source, 'filterCheckedAt': now, 'quality': quality, 'classId': item.get('item_class', {}).get('id'), 'subclassId': item.get('item_subclass', {}).get('id'), 'requiredLevel': item.get('required_level')}
         except RuntimeError:
             break
     write_json(ROOT / 'items.json', names)

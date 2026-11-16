@@ -1,3 +1,4 @@
+import { auctionCategories } from './categories.js';
 import { initLanguage, english } from './i18n.js';
 import { moneyParts, moneyText, historyPoints, filterItems, csvValue, sourceUrl, quoteDepth, bestHours, itemMetadata, craftOutputChoices, groupAuctionHouses, qualityClass } from './lib.js';
 import { demoData, demoIndex } from './demo.js';
@@ -9,7 +10,7 @@ const query = new URLSearchParams(location.search);
 const state = {
   region: query.get('region') || saved.region || 'eu', ruleset: query.get('ruleset') || saved.ruleset || '1',
   house: query.get('house') || saved.house || '110', selected: query.get('item') || '13463',
-  favorites: new Set(safeRead('fm-favorites', [])), favoritesOnly: false, query: '', sort: 'name', direction: 1, page: 1,
+  favorites: new Set(safeRead('fm-favorites', [])), favoritesOnly: false, subclassId: null, query: '', sort: 'name', direction: 1, page: 1,
   days: 7, metric: 0, demo: false, source: safeRead('fm-source', ''), index: null, names: {}, summary: null, history: null,
   recipeOutput: '', recipeRequest: 0, loading: false, request: 0, error: '', basket: safeRead('fm-basket', {}),
 };
@@ -33,14 +34,14 @@ function nameOf(id) { const name = state.names[id]?.name || `Предмет #${i
 function iconOf(id) { const icon = state.names[id]?.icon; return typeof icon === 'string' && /^https:\/\//.test(icon) ? `<img src="${escape(icon)}" alt="" loading="lazy">` : '<span aria-hidden="true">?</span>'; }
 async function loadVisibleMetadata(ids) {
   if (state.demo) return;
-  const queue = [...new Set(ids)].filter(id => /^\d+$/.test(id) && (!state.names[id] || state.names[id].missing || !state.names[id].icon || state.names[id].quality == null || state.names[id].classId == null) && !tooltipPending.has(id) && !tooltipFailed.has(id));
+  const queue = [...new Set(ids)].filter(id => /^\d+$/.test(id) && (!state.names[id] || state.names[id].missing || !state.names[id].icon || state.names[id].quality == null || state.names[id].classId == null || !Object.hasOwn(state.names[id], 'subclassId')) && !tooltipPending.has(id) && !tooltipFailed.has(id));
   queue.forEach(id => tooltipPending.add(id));
   async function worker() {
     while (queue.length) {
       const id = queue.shift();
       try {
         let meta = tooltipCache[id];
-        if (!meta || meta.metadataVersion !== 2) {
+        if (!meta || meta.metadataVersion !== 3) {
           const response = await fetch(`https://nether.wowhead.com/forever/tooltip/item/${id}`, {signal: AbortSignal.timeout(10000)});
           if (!response.ok) throw new Error('metadata unavailable');
           meta = itemMetadata(await response.json());
@@ -48,7 +49,7 @@ async function loadVisibleMetadata(ids) {
           tooltipCache[id] = meta;
         }
         const previous = state.names[id] || {};
-        state.names[id] = {...previous, name: !previous.name || previous.missing ? meta.name : previous.name, missing: false, icon: previous.icon || meta.icon, quality: previous.quality ?? meta.quality, classId: previous.classId ?? meta.classId, requiredLevel: previous.requiredLevel ?? meta.requiredLevel};
+        state.names[id] = {...previous, name: !previous.name || previous.missing ? meta.name : previous.name, missing: false, icon: previous.icon || meta.icon, quality: previous.quality ?? meta.quality, classId: previous.classId ?? meta.classId, subclassId: previous.subclassId ?? meta.subclassId, requiredLevel: previous.requiredLevel ?? meta.requiredLevel};
         const row = $('items-body').querySelector(`tr[data-id="${id}"]`);
         if (row) { const label = row.querySelector('[data-select]'); label.textContent = nameOf(id); label.className = `item-name quiet ${qualityClass(state.names[id].quality)}`; row.querySelector('.item-art').innerHTML = iconOf(id); }
         if (state.selected === id) { $('detail-name').textContent = nameOf(id); $('detail-name').className = qualityClass(state.names[id].quality); $('detail-icon').innerHTML = iconOf(id); }
@@ -173,9 +174,28 @@ function renderStats() {
   $('unit-count').textContent = state.summary ? number(entries.reduce((sum, v) => sum + v[2], 0)) : '—';
   $('fav-count').textContent = state.favorites.size;
 }
+function renderCategories() {
+  const ru = document.documentElement.lang === 'ru';
+  const selected = $('filter-category').value;
+  const label = category => ru ? category.ru : category.en;
+  options('filter-category', [['', ru ? 'Все предметы' : 'All items'], ...auctionCategories.map(category => [category.id, label(category)])], selected);
+  $('category-tree').innerHTML = `<button type="button" data-category="" class="category-choice ${selected === '' ? 'active' : ''}" aria-pressed="${selected === ''}">${ru ? 'Все предметы' : 'All items'}</button>` + auctionCategories.map(category => {
+    const active = selected === String(category.id);
+    const all = `<button type="button" data-category="${category.id}" class="category-choice ${active && state.subclassId == null ? 'active' : ''}" aria-pressed="${active && state.subclassId == null}">${ru ? 'Все' : 'All'} · ${escape(label(category))}</button>`;
+    const children = category.children.map(([id, nameRu, nameEn]) => `<button type="button" data-category="${category.id}" data-subcategory="${id}" class="category-choice ${active && state.subclassId === id ? 'active' : ''}" aria-pressed="${active && state.subclassId === id}">${escape(ru ? nameRu : nameEn)}</button>`).join('');
+    return category.children.length ? `<details class="category-group" ${active ? 'open' : ''}><summary>${escape(label(category))}</summary>${all}${children}</details>` : all;
+  }).join('');
+}
+$('category-tree').addEventListener('click', event => {
+  const button = event.target.closest('[data-category]');
+  if (!button) return;
+  $('filter-category').value = button.dataset.category;
+  state.subclassId = button.hasAttribute('data-subcategory') ? Number(button.dataset.subcategory) : null;
+  state.page = 1; renderCategories(); renderTable();
+});
 function readFilters() {
   const numeric = id => $(id).value.trim() === '' ? null : Number($(id).value);
-  return {classId: numeric('filter-category'), quality: numeric('filter-quality'), minLevel: numeric('filter-level-min'), maxLevel: numeric('filter-level-max'), minPrice: numeric('filter-price-min') == null ? null : numeric('filter-price-min') * 10000, maxPrice: numeric('filter-price-max') == null ? null : numeric('filter-price-max') * 10000};
+  return {classId: numeric('filter-category'), subclassId: state.subclassId, quality: numeric('filter-quality'), minLevel: numeric('filter-level-min'), maxLevel: numeric('filter-level-max'), minPrice: numeric('filter-price-min') == null ? null : numeric('filter-price-min') * 10000, maxPrice: numeric('filter-price-max') == null ? null : numeric('filter-price-max') * 10000};
 }
 function filtered() { return filterItems(state.summary?.items, state.names, state.query, state.favorites, state.favoritesOnly, state.sort, state.direction, readFilters()); }
 function renderTable() {
@@ -319,7 +339,7 @@ $('ruleset').addEventListener('change', () => { state.ruleset = $('ruleset').val
 $('house').addEventListener('change', () => { const group = groupAuctionHouses(getRule()?.houses || []).find(entry => entry.name === $('house').value); state.house = String(group?.houses[0]?.id || ''); fillPickers(); loadMarket(); });
 
 for (const control of document.querySelectorAll('#auction-filters input, #auction-filters select')) control.addEventListener('change', () => { state.page = 1; renderTable(); });
-$('filter-reset').addEventListener('click', () => { document.querySelectorAll('#auction-filters input, #auction-filters select').forEach(control => { control.value = ''; }); state.page = 1; renderTable(); });
+$('filter-reset').addEventListener('click', () => { document.querySelectorAll('#auction-filters input, #auction-filters select').forEach(control => { control.value = ''; }); state.subclassId = null; state.page = 1; renderCategories(); renderTable(); });
 $('search').addEventListener('input', () => { state.query = $('search').value; state.page = 1; renderTable(); });
 $('previous').addEventListener('click', () => { state.page--; renderTable(); });
 $('next').addEventListener('click', () => { state.page++; renderTable(); });
@@ -384,6 +404,7 @@ $('export-button').addEventListener('click', () => {
   const url = URL.createObjectURL(blob), link = document.createElement('a'); link.href = url; link.download = `forever-${state.demo ? 'demo-' : ''}${state.region}-${state.ruleset}-${state.house}.csv`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
 document.addEventListener('keydown', event => { if (event.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName) && !$('settings-dialog').open) { event.preventDefault(); $('search').focus(); } });
+renderCategories();
 initLanguage();
-document.addEventListener('languagechange', () => { fillPickers(); renderAll(); });
+document.addEventListener('languagechange', () => { fillPickers(); renderCategories(); renderAll(); });
 loadIndex();

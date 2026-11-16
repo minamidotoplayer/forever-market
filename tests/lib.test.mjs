@@ -9,6 +9,11 @@ test('auction filters intersect quality, category, required level and price', ()
   assert.deepEqual(ids({minLevel:1}), ['1','2']);
   assert.deepEqual(ids({}), ['1','2','3']);
 });
+test('subcategory IDs are scoped to their parent category', () => {
+  const items = {1:[1,1,1,1],2:[1,1,1,1],3:[1,1,1,1]};
+  const names = {1:{classId:2,subclassId:2},2:{classId:4,subclassId:2},3:{classId:4}};
+  assert.deepEqual(filterItems(items,names,'',new Set(),false,'price',1,{classId:4,subclassId:2}).map(([id])=>id), ['2']);
+});
 import { itemMetadata, craftOutputChoices, groupAuctionHouses, qualityClass } from '../web/lib.js';
 test('quality color uses known item rarity without inventing unknown values', () => {
   assert.equal(qualityClass(2), 'quality-2');
@@ -24,9 +29,10 @@ test('auction groups combine matching names without losing distinct feeds', () =
 test('tooltip metadata safely supplies item names and icon URLs', () => {
   const gear = itemMetadata({name:'Gloves', tooltip:'<!--scstart4:2--><!--rlvl-->28'});
   assert.equal(gear.classId, 4);
+  assert.equal(gear.subclassId, 2);
   assert.equal(gear.requiredLevel, 28);
-  assert.deepEqual(itemMetadata({name: 'Brawler Gloves', icon: 'inv_gauntlets_05', quality: 3}), {name: 'Brawler Gloves', icon: 'https://wow.zamimg.com/images/wow/icons/medium/inv_gauntlets_05.jpg', quality: 3, classId: null, requiredLevel: null, metadataVersion: 2});
-  assert.deepEqual(itemMetadata({name: 'Known', icon: '../bad'}), {name: 'Known', icon: null, quality: null, classId: null, requiredLevel: null, metadataVersion: 2});
+  assert.deepEqual(itemMetadata({name: 'Brawler Gloves', icon: 'inv_gauntlets_05', quality: 3}), {name: 'Brawler Gloves', icon: 'https://wow.zamimg.com/images/wow/icons/medium/inv_gauntlets_05.jpg', quality: 3, classId: null, subclassId: null, requiredLevel: null, metadataVersion: 3});
+  assert.deepEqual(itemMetadata({name: 'Known', icon: '../bad'}), {name: 'Known', icon: null, quality: null, classId: null, subclassId: null, requiredLevel: null, metadataVersion: 3});
   assert.equal(itemMetadata({name: ''}), null);
 });
 test('craft output choices stay bounded to selected and recipe items', () => {

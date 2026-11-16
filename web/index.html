@@ -37,13 +37,15 @@
         <section class="panel item-panel" aria-labelledby="items-heading">
           <div class="panel-title"><div><span class="eyebrow">АУКЦИОННЫЙ ДОМ</span><h2 id="items-heading">Все предметы <span id="filtered-count"></span></h2></div><button id="export-button" class="icon-button" title="Скачать текущие цены в CSV" aria-label="Скачать текущие цены в CSV">↓</button></div>
           <details class="auction-filters" id="auction-filters" open><summary>Фильтры аукциона</summary><div class="filter-grid">
-<label>Категория<select id="filter-category"><option value="">Все категории</option><option value="2">Оружие</option><option value="4">Броня</option><option value="0">Расходуемое</option><option value="7">Материалы</option><option value="9">Рецепты</option><option value="1">Контейнеры</option><option value="15">Разное</option></select></label>
+<select id="filter-category" hidden aria-label="Категория"></select>
 <label>Качество<select id="filter-quality"><option value="">Любое</option><option value="0">Низкое</option><option value="1">Обычное</option><option value="2">Необычное</option><option value="3">Редкое</option><option value="4">Эпическое</option><option value="5">Легендарное</option></select></label>
 <label>Требуемый уровень<div class="filter-range"><input id="filter-level-min" type="number" min="0" placeholder="От" aria-label="Минимальный уровень"><input id="filter-level-max" type="number" min="0" placeholder="До" aria-label="Максимальный уровень"></div></label>
 <label>Цена за штуку, золото<div class="filter-range"><input id="filter-price-min" type="number" min="0" step="0.01" placeholder="От" aria-label="Минимальная цена"><input id="filter-price-max" type="number" min="0" step="0.01" placeholder="До" aria-label="Максимальная цена"></div></label>
 </div><div class="filter-help"><span>Категория и уровень учитываются только для предметов с загруженными данными.</span><button class="quiet" id="filter-reset">Сбросить</button></div></details>
+          <div class="listing-layout"><details class="category-browser" open><summary>Категории</summary><nav id="category-tree" aria-label="Категории предметов"></nav></details><div class="listing-results">
           <div class="table-scroll"><table class="item-table"><thead><tr><th><button data-sort="name">Предмет <span>↕</span></button></th><th><button data-sort="price">Цена / шт. <span>↕</span></button></th><th class="volume-col"><button data-sort="volume">Кол-во <span>↕</span></button></th><th><span class="sr-only">Избранное</span></th></tr></thead><tbody id="items-body"></tbody></table><div id="empty-state" class="empty" hidden></div></div>
           <div class="pagination"><span id="pagination-label"></span><div><button id="previous" aria-label="Предыдущая страница">←</button><span id="page-number">1</span><button id="next" aria-label="Следующая страница">→</button></div></div>
+          </div></div>
         </section>
         <section class="panel detail-panel" id="detail" aria-labelledby="detail-name">
           <div class="detail-top"><span class="eyebrow">ИСТОРИЯ ПРЕДМЕТА</span><button id="detail-favorite" class="icon-button" aria-label="Добавить предмет в избранное">☆</button></div>

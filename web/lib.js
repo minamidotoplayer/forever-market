@@ -8,9 +8,9 @@ export function itemMetadata(data) {
   const icon = typeof data.icon === 'string' && /^[a-z0-9_]+$/i.test(data.icon) ? `https://wow.zamimg.com/images/wow/icons/medium/${data.icon}.jpg` : null;
   const quality = Number.isInteger(data.quality) && data.quality >= 0 && data.quality <= 5 ? data.quality : null;
   const tooltip = typeof data.tooltip === 'string' ? data.tooltip : '';
-  const classMatch = tooltip.match(/<!--scstart(\d+):\d+-->/);
+  const classMatch = tooltip.match(/<!--scstart(\d+):(\d+)-->/);
   const levelMatch = tooltip.match(/<!--rlvl-->(\d+)/);
-  return {name: data.name, icon, quality, classId: classMatch ? Number(classMatch[1]) : null, requiredLevel: levelMatch ? Number(levelMatch[1]) : null, metadataVersion: 2};
+  return {name: data.name, icon, quality, classId: classMatch ? Number(classMatch[1]) : null, subclassId: classMatch ? Number(classMatch[2]) : null, requiredLevel: levelMatch ? Number(levelMatch[1]) : null, metadataVersion: 3};
 }
 export function qualityClass(quality) { return Number.isInteger(quality) && quality >= 0 && quality <= 5 ? `quality-${quality}` : ''; }
 export function craftOutputChoices(selected, recipe) {
@@ -42,6 +42,7 @@ export function filterItems(items, names, query, favorites, favoritesOnly, sortK
     const meta = names[id] || {};
     if (filters.quality != null && meta.quality !== filters.quality) return false;
     if (filters.classId != null && meta.classId !== filters.classId) return false;
+    if (filters.subclassId != null && meta.subclassId !== filters.subclassId) return false;
     if (filters.minLevel != null && (meta.requiredLevel == null || meta.requiredLevel < filters.minLevel)) return false;
     if (filters.maxLevel != null && (meta.requiredLevel == null || meta.requiredLevel > filters.maxLevel)) return false;
     if (filters.minPrice != null && values[0] < filters.minPrice) return false;
