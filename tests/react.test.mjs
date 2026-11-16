@@ -1,0 +1,338 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { JSDOM } from "jsdom";
+import React from "react";
+const dom = new JSDOM("<!doctype html><html><body></body></html>", {
+  url: "https://example.com/forever-market/",
+});
+Object.defineProperties(globalThis, {
+  window: { value: dom.window, configurable: true },
+  document: { value: dom.window.document, configurable: true },
+  navigator: { value: dom.window.navigator, configurable: true },
+  HTMLElement: { value: dom.window.HTMLElement, configurable: true },
+  IS_REACT_ACT_ENVIRONMENT: { value: true, writable: true, configurable: true },
+});
+const { render, fireEvent, cleanup } = await import("@testing-library/react");
+const { Listings } = await import("../src/components/Listings.tsx");
+const market = {
+  updatedAt: 1,
+  items: { 1: [100, 100, 2, 1], 2: [200, 200, 3, 1] },
+};
+const names = {
+  1: { name: "Greater Arcane Elixir", quality: 2, classId: 0, subclassId: 2 },
+  2: { name: "Dreamfoil", quality: 1, classId: 7, subclassId: 9 },
+};
+test("React preserves listing rows when a different item is selected", () => {
+  const props = {
+    market,
+    names,
+    selected: "1",
+    onSelect: () => {},
+    favorites: new Set(),
+    onFavorite: () => {},
+    favoritesOnly: false,
+    t: (en) => en,
+    language: "en",
+    onVisible: () => {},
+  };
+  const view = render(React.createElement(Listings, props));
+  const row = view.getByText("Dreamfoil").closest("tr");
+  view.rerender(React.createElement(Listings, { ...props, selected: "2" }));
+  assert.equal(view.getByText("Dreamfoil").closest("tr"), row);
+  assert.equal(row.getAttribute("aria-selected"), "true");
+  cleanup();
+});
+test("English listing UI has partial search and category filters", () => {
+  const view = render(
+    React.createElement(Listings, {
+      market,
+      names,
+      selected: "1",
+      onSelect: () => {},
+      favorites: new Set(),
+      onFavorite: () => {},
+      favoritesOnly: false,
+      t: (en) => en,
+      language: "en",
+      onVisible: () => {},
+    }),
+  );
+  fireEvent.change(view.getByLabelText("Search items"), {
+    target: { value: "arc eli" },
+  });
+  assert.ok(view.getByText("Greater Arcane Elixir"));
+  assert.equal(view.queryByText("Dreamfoil"), null);
+  assert.equal(/[А-Яа-яЁё]/.test(view.container.textContent), false);
+  cleanup();
+});
+const { waitFor } = await import("@testing-library/react");
+Object.defineProperties(globalThis, {
+  location: { value: dom.window.location, configurable: true },
+  localStorage: { value: dom.window.localStorage, configurable: true },
+});
+const { App } = await import("../src/App.tsx");
+test("English app has no Russian UI and reuses saved preferences", async () => {
+  const original = globalThis.fetch;
+  localStorage.clear();
+  localStorage.setItem("fm-language", "en");
+  localStorage.setItem("fm-favorites", '["1"]');
+  globalThis.fetch = async (url) => ({
+    ok: true,
+    json: async () =>
+      String(url).includes("index.json")
+        ? {
+            regions: [
+              {
+                id: "eu",
+                rulesets: [
+                  {
+                    id: 1,
+                    name: "PvP",
+                    houses: [
+                      {
+                        id: 110,
+                        name: "Alliance Auction House",
+                        key: "eu-test",
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          }
+        : String(url).includes("items.json")
+          ? names
+          : String(url).includes("history/")
+            ? { hourly: {}, daily: {} }
+            : market,
+  });
+  try {
+    const view = render(React.createElement(App));
+    await waitFor(() =>
+      assert.ok(
+        view.getByRole("button", {
+          name: "Greater Arcane Elixir",
+          exact: true,
+        }),
+      ),
+    );
+    assert.equal(/[А-Яа-яЁё]/.test(view.container.textContent), false);
+    fireEvent.change(view.getByLabelText("Language"), {
+      target: { value: "ru" },
+    });
+    assert.ok(view.getByText("Настройки данных"));
+    fireEvent.change(view.getByLabelText("Language"), {
+      target: { value: "en" },
+    });
+    assert.equal(/[А-Яа-яЁё]/.test(view.container.textContent), false);
+    fireEvent.click(view.getByText("Data settings"));
+    assert.equal(/[А-Яа-яЁё]/.test(view.container.textContent), false);
+    fireEvent.click(view.getByLabelText("Close"));
+    cleanup();
+  } finally {
+    cleanup();
+    globalThis.fetch = original;
+    localStorage.clear();
+  }
+});
+const { useMarket } = await import("../src/hooks/useMarket.ts");
+function Harness({ source }) {
+  const data = useMarket(source, false);
+  return React.createElement(
+    "output",
+    null,
+    data.current.region?.id || "empty",
+  );
+}
+test("a late index response cannot replace the current source", async () => {
+  const original = globalThis.fetch;
+  let finishOld;
+  globalThis.fetch = async (url) => {
+    const text = String(url);
+    if (text.includes("old.example") && text.includes("index.json"))
+      return new Promise((resolve) => {
+        finishOld = () =>
+          resolve({
+            ok: true,
+            json: async () => ({ regions: [{ id: "old", rulesets: [] }] }),
+          });
+      });
+    return {
+      ok: true,
+      json: async () =>
+        text.includes("index.json")
+          ? { regions: [{ id: "new", rulesets: [] }] }
+          : {},
+    };
+  };
+  try {
+    const view = render(
+      React.createElement(Harness, { source: "https://old.example/data/" }),
+    );
+    view.rerender(
+      React.createElement(Harness, { source: "https://new.example/data/" }),
+    );
+    await waitFor(() =>
+      assert.equal(view.getByRole("status").textContent, "new"),
+    );
+    finishOld();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(view.getByRole("status").textContent, "new");
+    cleanup();
+  } finally {
+    cleanup();
+    globalThis.fetch = original;
+  }
+});
+function SnapshotHarness() {
+  const data = useMarket("", false);
+  return React.createElement(
+    "div",
+    null,
+    React.createElement("output", null, data.market ? "loaded" : "empty"),
+    React.createElement("button", { onClick: data.refresh }, "refresh"),
+  );
+}
+test("failed index refresh clears the old market snapshot", async () => {
+  const original = fetch;
+  let offline = false;
+  globalThis.fetch = async (url) => {
+    if (offline) throw new Error("offline");
+    return {
+      ok: true,
+      json: async () =>
+        String(url).includes("index.json")
+          ? {
+              regions: [
+                {
+                  id: "eu",
+                  rulesets: [
+                    {
+                      id: 1,
+                      name: "PvP",
+                      houses: [{ id: 110, name: "Alliance", key: "eu-test" }],
+                    },
+                  ],
+                },
+              ],
+            }
+          : String(url).includes("items.json")
+            ? names
+            : String(url).includes("history/")
+              ? { hourly: {}, daily: {} }
+              : market,
+    };
+  };
+  try {
+    const view = render(React.createElement(SnapshotHarness));
+    await waitFor(() =>
+      assert.equal(view.getByRole("status").textContent, "loaded"),
+    );
+    offline = true;
+    fireEvent.click(view.getByText("refresh"));
+    await waitFor(() =>
+      assert.equal(view.getByRole("status").textContent, "empty"),
+    );
+  } finally {
+    cleanup();
+    globalThis.fetch = original;
+  }
+});
+const { useMetadata } = await import("../src/hooks/useMetadata.ts");
+function MetadataHarness({ seed, scope }) {
+  const [catalogue, setCatalogue] = React.useState(seed);
+  React.useEffect(() => setCatalogue(seed), [seed]);
+  useMetadata(["42"], catalogue, setCatalogue, false, scope);
+  return React.createElement("output", null, catalogue["42"].icon || "missing");
+}
+test("replaced catalogue reuses cached visible metadata", async () => {
+  const original = fetch;
+  localStorage.clear();
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      name: "Sword",
+      icon: "inv_sword_01",
+      quality: 2,
+      tooltip: "<!--scstart2:7-->",
+    }),
+  });
+  try {
+    const view = render(
+      React.createElement(MetadataHarness, {
+        seed: { 42: { name: "Sword" } },
+        scope: 1,
+      }),
+    );
+    await waitFor(() =>
+      assert.match(view.getByRole("status").textContent, /https:/),
+    );
+    view.rerender(
+      React.createElement(MetadataHarness, {
+        seed: { 42: { name: "Sword" } },
+        scope: 2,
+      }),
+    );
+    await waitFor(() =>
+      assert.match(view.getByRole("status").textContent, /https:/),
+    );
+  } finally {
+    cleanup();
+    globalThis.fetch = original;
+    localStorage.clear();
+  }
+});
+const { BasketPanel } = await import("../src/components/BasketPanel.tsx");
+test("Russian recipe response is discarded after switching to English", async () => {
+  let finish;
+  const search = () =>
+    new Promise((resolve) => {
+      finish = () =>
+        resolve({
+          recipes: [
+            {
+              id: 1,
+              name: "Русский рецепт",
+              product: { item: 1, count: 1 },
+              reagents: [[2, 1]],
+            },
+          ],
+          names: {},
+          build: "test",
+        });
+    });
+  const props = {
+    search,
+    basket: {},
+    setBasket: () => {},
+    selected: "1",
+    market,
+    names,
+    onNames: () => {},
+    language: "ru",
+    t: (_en, ru) => ru,
+  };
+  try {
+    const view = render(React.createElement(BasketPanel, props));
+    view.container.querySelector("details").open = true;
+    fireEvent.change(view.getByLabelText("Поиск рецептов"), {
+      target: { value: "рецепт" },
+    });
+    fireEvent.click(view.getByText("Найти"));
+    view.rerender(
+      React.createElement(BasketPanel, {
+        ...props,
+        language: "en",
+        t: (en) => en,
+      }),
+    );
+    await React.act(async () => {
+      finish();
+      await Promise.resolve();
+    });
+    assert.equal(view.queryByText("Русский рецепт"), null);
+    assert.equal(/[А-Яа-яЁё]/.test(view.container.textContent), false);
+  } finally {
+    cleanup();
+  }
+});

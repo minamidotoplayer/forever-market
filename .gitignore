@@ -3,3 +3,5 @@ __pycache__/
 .env*
 !.env.example
 .site-package.tar.gz
+
+node_modules/

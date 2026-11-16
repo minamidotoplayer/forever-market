@@ -41,19 +41,22 @@ Without credentials, the workflow publishes an explicitly labelled demo with fic
 
 The collector runs at minute 23 of every hour. GitHub may delay or skip scheduled runs. Each market shows its actual snapshot time and marks old data; failed requests preserve the last successful snapshot. A scheduled workflow in a public repository can be disabled after a period of repository inactivity.
 
-EU, US, KR and TW are supported. China uses a separate platform and is not connected. The API currently may return identical houses for different rulesets; the interface includes house IDs so you can distinguish the feeds without assuming they are separate markets.
+EU, US, KR and TW are supported. China uses a separate platform and is not connected. The API currently may return identical houses for different rulesets; feeds with matching faction names are combined within each region and ruleset, deduplicating auction IDs.
 
 ## Run locally
 
-Requirements: Node.js 22+ and Python 3.12+. There are no third-party project dependencies.
+Requirements: Node.js 22.12+ and Python 3.12+. The frontend uses React, TypeScript and Vite; the collector uses only the Python standard library.
 
 ```bash
-npm test
+npm ci
+npm run dev
+# Production checks:
+npm run test:frontend
 npm run build
-python3 -m http.server 3000 --directory dist
+npm run preview
 ```
 
-Open `http://localhost:3000`. An empty data directory opens the demo. To collect real prices locally, provide `BNET_CLIENT_ID` and `BNET_CLIENT_SECRET` through your environment, then run:
+Open the local URL printed by Vite. An empty data directory opens the demo. To collect real prices locally, provide `BNET_CLIENT_ID` and `BNET_CLIENT_SECRET` through your environment, then run:
 
 ```bash
 python3 scripts/collect.py
@@ -79,3 +82,5 @@ Code is available under the [MIT License](LICENSE). World of Warcraft and relate
 Auction feeds with the same faction name are combined per region and ruleset. Repeated auction IDs are counted once. Combined history starts with the first combined snapshot; original feed histories remain in the data branch. Category and required-level filters only match items with known metadata.
 
 Deployment: pushes to main run Publish site using the latest market-data snapshot. Collect market data runs hourly or manually, then triggers Publish site after success. Metadata lookups use four workers; the collector logs region and metadata timings.
+
+Frontend structure: `src/components` contains the React interface; `src/hooks` owns market and metadata requests; `src/types.ts` defines the data contracts. `npm run typecheck` checks TypeScript. DOM tests run in jsdom and require no desktop automation. Existing favorites, basket, market selection and language storage keys are preserved.

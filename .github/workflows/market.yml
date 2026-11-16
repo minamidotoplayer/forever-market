@@ -20,6 +20,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Install frontend dependencies
+        run: npm ci
       - name: Test collector and frontend utilities
         run: npm test
       - name: Check Blizzard configuration

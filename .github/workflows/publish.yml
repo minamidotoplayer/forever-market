@@ -24,6 +24,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Install frontend dependencies
+        run: npm ci
       - name: Restore latest market snapshots
         shell: bash
         run: |
@@ -36,7 +38,7 @@ jobs:
             echo 'No market snapshots yet. Publishing the labelled demo.'
           fi
       - name: Test frontend utilities
-        run: node --test tests/*.test.mjs
+        run: npm run test:frontend
       - name: Build static site
         run: npm run build
       - name: Check Pages artifact size
