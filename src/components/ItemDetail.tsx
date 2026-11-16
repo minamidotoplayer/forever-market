@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import { bestHours, historyPoints, moneyText, quoteDepth } from "../lib";
-import { Money, ItemIcon, qualityClass } from "./Common";
+import { Money, qualityClass } from "./Common";
+import { ItemTooltip } from "./ItemTooltip";
 import type {
   Catalogue,
   Language,
@@ -246,24 +247,36 @@ export function ItemDetail({
           {favorite ? "★" : "☆"}
         </button>
       </div>
-      <div className="item-heading">
-        <ItemIcon meta={names[id]} large />
-        <div>
-          <h2 id="detail-name" className={qualityClass(names[id]?.quality)}>
-            {values
-              ? names[id]?.name || `${t("Item", "Предмет")} #${id}`
-              : t("Select an item", "Выберите предмет")}
-          </h2>
-          <span className="muted">
-            {values
-              ? `ID ${id}`
-              : t(
-                  "Choose a listing to view its history.",
-                  "Выберите предмет в списке.",
-                )}
-          </span>
-        </div>
-      </div>
+      <ItemTooltip
+        id={values ? id : ""}
+        meta={names[id]}
+        t={t}
+        large
+        className="item-heading"
+      >
+        {(tooltipId) => (
+          <div>
+            <h2
+              id="detail-name"
+              tabIndex={values ? 0 : undefined}
+              aria-describedby={tooltipId}
+              className={qualityClass(names[id]?.quality)}
+            >
+              {values
+                ? names[id]?.name || `${t("Item", "Предмет")} #${id}`
+                : t("Select an item", "Выберите предмет")}
+            </h2>
+            <span className="muted">
+              {values
+                ? `ID ${id}`
+                : t(
+                    "Choose a listing to view its history.",
+                    "Выберите предмет в списке.",
+                  )}
+            </span>
+          </div>
+        )}
+      </ItemTooltip>
       <button className="button" disabled={!values} onClick={onAdd}>
         ＋ {t("Add to basket", "В корзину")}
       </button>

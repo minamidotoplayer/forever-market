@@ -61,10 +61,6 @@ test("English listing UI has partial search and category filters", () => {
     target: { value: "arc eli" },
   });
   assert.ok(view.getByText("Greater Arcane Elixir"));
-  assert.equal(
-    view.getByText("Greater Arcane Elixir").title,
-    "Greater Arcane Elixir",
-  );
   assert.equal(view.queryByText("Dreamfoil"), null);
   assert.equal(/[А-Яа-яЁё]/.test(view.container.textContent), false);
   cleanup();
@@ -734,5 +730,196 @@ test("changing ruleset loads its own snapshot and replaces the previous price", 
     cleanup();
     globalThis.fetch = original;
     localStorage.clear();
+  }
+});
+
+test("tooltip HTML keeps item stats while removing executable content and links", async () => {
+  const { sanitizeTooltipHtml } = await import("../src/tooltip.ts");
+  const html = sanitizeTooltipHtml(
+    '<b class="q3 evil" onclick="bad()">Sword</b><br><span class="q2">+7 Strength</span><script>bad()</script><img src=x onerror="bad()"><svg onload="bad()"></svg><a href="javascript:bad()">Equip effect</a><span style="background:url(x)">Safe</span>',
+  );
+  const fragment = document.createElement("div");
+  fragment.innerHTML = html;
+  assert.equal(fragment.querySelector("b").className, "q3");
+  assert.ok(fragment.textContent.includes("+7 Strength"));
+  assert.ok(fragment.textContent.includes("Equip effect"));
+  assert.equal(
+    fragment.querySelector("script, img, svg, a, [onclick], [style]"),
+    null,
+  );
+});
+
+test("item tooltip opens on hover, caches data, pins on icon click and dismisses with Escape", async () => {
+  const { ItemTooltip } = await import("../src/components/ItemTooltip.tsx");
+  const original = fetch;
+  let requests = 0;
+  let selected = 0;
+  globalThis.fetch = async () => {
+    requests++;
+    return {
+      ok: true,
+      json: async () => ({
+        name: "Bronze Sword",
+        tooltip:
+          '<b class="q2">Bronze Sword</b><br><span class="q2">+7 Strength</span>',
+      }),
+    };
+  };
+  const view = render(
+    React.createElement(
+      ItemTooltip,
+      { id: "9001", meta: { name: "Bronze Sword" }, t: (en) => en },
+      (tooltipId) =>
+        React.createElement(
+          "button",
+          { "aria-describedby": tooltipId, onClick: () => selected++ },
+          "Select sword",
+        ),
+    ),
+  );
+  try {
+    fireEvent.mouseEnter(view.container.querySelector(".item-cell"));
+    await view.findByRole("tooltip");
+    await view.findByText("+7 Strength");
+    assert.equal(selected, 0);
+    fireEvent.keyDown(document, { key: "Escape" });
+    assert.equal(view.queryByRole("tooltip"), null);
+    fireEvent.click(
+      view.getByRole("button", { name: "Item details: Bronze Sword" }),
+    );
+    await view.findByRole("dialog", { name: "Bronze Sword" });
+    await view.findByText("+7 Strength");
+    assert.equal(requests, 1);
+    fireEvent.click(view.getByRole("button", { name: "Close item tooltip" }));
+    assert.equal(view.queryByRole("dialog"), null);
+    assert.equal(view.queryByRole("tooltip"), null);
+    fireEvent.click(view.getByText("Select sword"));
+    assert.equal(selected, 1);
+  } finally {
+    cleanup();
+    globalThis.fetch = original;
+  }
+});
+
+test("tooltip failure leaves the item usable and retries on the next opening", async () => {
+  const { ItemTooltip } = await import("../src/components/ItemTooltip.tsx");
+  const original = fetch;
+  let fail = true;
+  globalThis.fetch = async () => {
+    if (fail) throw new Error("offline");
+    return {
+      ok: true,
+      json: async () => ({
+        name: "Retry item",
+        tooltip: "<b>Recovered stats</b>",
+      }),
+    };
+  };
+  const view = render(
+    React.createElement(
+      ItemTooltip,
+      { id: "9002", meta: { name: "Retry item" }, t: (en) => en },
+      () => React.createElement("button", null, "Select item"),
+    ),
+  );
+  try {
+    fireEvent.focus(view.getByText("Select item"));
+    await view.findByText("Item details are temporarily unavailable.");
+    fireEvent.keyDown(document, { key: "Escape" });
+    fail = false;
+    fireEvent.click(
+      view.getByRole("button", { name: "Item details: Retry item" }),
+    );
+    await view.findByText("Recovered stats");
+  } finally {
+    cleanup();
+    globalThis.fetch = original;
+  }
+});
+
+test("late tooltip response cannot replace the next hovered item", async () => {
+  const { ItemTooltip } = await import("../src/components/ItemTooltip.tsx");
+  const original = fetch;
+  let finish;
+  globalThis.fetch = async (url) =>
+    String(url).endsWith("9003")
+      ? new Promise((resolve) => {
+          finish = () =>
+            resolve({
+              ok: true,
+              json: async () => ({ tooltip: "<b>Old item stats</b>" }),
+            });
+        })
+      : {
+          ok: true,
+          json: async () => ({ tooltip: "<b>Current item stats</b>" }),
+        };
+  const view = render(
+    React.createElement(
+      React.Fragment,
+      null,
+      ...["9003", "9004"].map((id) =>
+        React.createElement(
+          ItemTooltip,
+          { key: id, id, meta: { name: id }, t: (en) => en },
+          () => React.createElement("button", null, `Focus ${id}`),
+        ),
+      ),
+    ),
+  );
+  try {
+    fireEvent.focus(view.getByText("Focus 9003"));
+    await waitFor(() => assert.ok(finish));
+    fireEvent.focus(view.getByText("Focus 9004"));
+    await view.findByText("Current item stats");
+    await React.act(async () => {
+      finish();
+      await Promise.resolve();
+    });
+    assert.equal(view.queryByText("Old item stats"), null);
+    assert.equal(view.getAllByRole("tooltip").length, 1);
+  } finally {
+    cleanup();
+    globalThis.fetch = original;
+  }
+});
+
+test("tooltip stays inside a narrow viewport near its bottom right corner", async () => {
+  const { ItemTooltip } = await import("../src/components/ItemTooltip.tsx");
+  const original = fetch;
+  const measure = HTMLElement.prototype.getBoundingClientRect;
+  const width = window.innerWidth,
+    height = window.innerHeight;
+  window.innerWidth = 360;
+  window.innerHeight = 400;
+  HTMLElement.prototype.getBoundingClientRect = function () {
+    return this.classList.contains("wow-item-tooltip")
+      ? { left: 0, right: 320, top: 0, bottom: 200, width: 320, height: 200 }
+      : { left: 300, right: 340, top: 370, bottom: 398, width: 40, height: 28 };
+  };
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({ tooltip: "<b>Corner item stats</b>" }),
+  });
+  const view = render(
+    React.createElement(
+      ItemTooltip,
+      { id: "9005", meta: { name: "Corner item" }, t: (en) => en },
+      () => React.createElement("button", null, "Focus corner"),
+    ),
+  );
+  try {
+    fireEvent.focus(view.getByText("Focus corner"));
+    await view.findByText("Corner item stats");
+    const tooltip = view.getByRole("tooltip");
+    assert.ok(Number.parseFloat(tooltip.style.left) >= 12);
+    assert.ok(Number.parseFloat(tooltip.style.left) + 320 <= 348);
+    assert.ok(Number.parseFloat(tooltip.style.top) + 200 <= 388);
+  } finally {
+    cleanup();
+    globalThis.fetch = original;
+    HTMLElement.prototype.getBoundingClientRect = measure;
+    window.innerWidth = width;
+    window.innerHeight = height;
   }
 });

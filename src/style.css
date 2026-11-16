@@ -398,6 +398,128 @@ kbd {
   min-width: 0;
   flex: 1;
 }
+.item-inspect {
+  display: block;
+  flex-shrink: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  border-radius: 6px;
+}
+.item-inspect:hover .item-art,
+.item-inspect[aria-expanded="true"] .item-art {
+  border-color: #f5d08a;
+  box-shadow: 0 0 7px #d5a64966;
+}
+.wow-item-tooltip {
+  position: fixed;
+  z-index: 1200;
+  width: 320px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  padding: 13px 15px;
+  border: 2px solid #a48b62;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #151023f7, #080710fa);
+  box-shadow:
+    inset 0 0 0 1px #25223b,
+    0 8px 28px #000b;
+  color: #f5f0e6;
+  font:
+    13px/1.45 Arial,
+    sans-serif;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.wow-item-tooltip[role="dialog"] {
+  padding-top: 32px;
+}
+.tooltip-close {
+  position: absolute;
+  right: 5px;
+  top: 2px;
+  min-width: 30px;
+  min-height: 30px;
+  font-size: 23px;
+}
+.wow-item-tooltip > p {
+  margin: 6px 0 0;
+  color: #bba98a;
+}
+.wow-tooltip-body table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.wow-tooltip-body td,
+.wow-tooltip-body th {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+}
+.wow-tooltip-body th {
+  text-align: right;
+  vertical-align: top;
+}
+.wow-tooltip-body b {
+  font-weight: 600;
+}
+.wow-tooltip-body .q {
+  color: #ffd100;
+}
+.wow-tooltip-body .q0 {
+  color: #9d9d9d;
+}
+.wow-tooltip-body .q1 {
+  color: #fff;
+}
+.wow-tooltip-body .q2 {
+  color: #1eff00;
+}
+.wow-tooltip-body .q3 {
+  color: #5ca9ff;
+}
+.wow-tooltip-body .q4 {
+  color: #c381ff;
+}
+.wow-tooltip-body .q5 {
+  color: #ff8000;
+}
+.wow-tooltip-body .q6 {
+  color: #e6cc80;
+}
+.wow-tooltip-body .q7 {
+  color: #00ccff;
+}
+.wow-tooltip-body .toycolor {
+  color: #9fc8ff;
+}
+.wow-tooltip-body .moneygold {
+  color: #f5cc61;
+}
+.wow-tooltip-body .moneysilver {
+  color: #cbd0d8;
+}
+.wow-tooltip-body .moneycopper {
+  color: #d19b6b;
+}
+.wow-tooltip-body .moneygold::after {
+  content: "g";
+  padding-left: 2px;
+}
+.wow-tooltip-body .moneysilver::after {
+  content: "s";
+  padding-left: 2px;
+}
+.wow-tooltip-body .moneycopper::after {
+  content: "c";
+  padding-left: 2px;
+}
+.wow-tooltip-body .whtt-sellprice {
+  margin-top: 7px;
+}
 .item-table th {
   text-align: left;
   color: #d8bc83;

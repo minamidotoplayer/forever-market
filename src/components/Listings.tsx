@@ -1,7 +1,8 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { CategoryTree } from "./CategoryTree";
 import { csvValue, filterItems } from "../lib";
-import { Money, ItemIcon, qualityClass } from "./Common";
+import { Money, qualityClass } from "./Common";
+import { ItemTooltip } from "./ItemTooltip";
 import type {
   Basket,
   Catalogue,
@@ -56,22 +57,23 @@ const Row = memo(function Row({
       onClick={() => onSelect(id)}
     >
       <td>
-        <div className="item-cell">
-          <ItemIcon meta={meta} />
-          <div className="item-label">
-            <button
-              title={meta?.name || `${t("Item", "Предмет")} #${id}`}
-              className={`item-name quiet ${qualityClass(meta?.quality)}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                onSelect(id);
-              }}
-            >
-              {meta?.name || `${t("Item", "Предмет")} #${id}`}
-            </button>
-            <span className="item-id">ID {id}</span>
-          </div>
-        </div>
+        <ItemTooltip id={id} meta={meta} t={t}>
+          {(tooltipId) => (
+            <div className="item-label">
+              <button
+                aria-describedby={tooltipId}
+                className={`item-name quiet ${qualityClass(meta?.quality)}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelect(id);
+                }}
+              >
+                {meta?.name || `${t("Item", "Предмет")} #${id}`}
+              </button>
+              <span className="item-id">ID {id}</span>
+            </div>
+          )}
+        </ItemTooltip>
       </td>
       <td>
         <Money value={values[0]} />
