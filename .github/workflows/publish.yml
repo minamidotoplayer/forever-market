@@ -11,7 +11,7 @@ permissions:
   pages: write
   id-token: write
 concurrency:
-  group: forever-market-publish
+  group: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('skip-{0}', github.run_id) || 'forever-market-publish' }}
   cancel-in-progress: false
 jobs:
   build:
