@@ -28,3 +28,23 @@ for rule in api.get(region, '/data/wow/ruleset/index').get('rulesets', []):
                           'rows': len(rows), 'fingerprint': fingerprint,
                           'items': len({row.get('item', {}).get('id') for row in rows}),
                           'rowKeys': list(rows[0]) if rows else []}), flush=True)
+
+    if rule_id == 1:
+        seen, conflicts, total = {}, 0, 0
+        for member in index['auctions']:
+            if member.get('name') != house.get('name'):
+                continue
+            member_path = urllib.parse.urlsplit(member['key']['href']).path
+            payload = api.get(region, member_path)
+            feeds = [('auctions', payload.get('auctions', []))]
+            commodities = api.get(region, payload.get('commodities', {}).get('href', member_path + '/commodities'), optional=True) or {}
+            feeds.append(('commodities', commodities.get('auctions', [])))
+            for kind, feed in feeds:
+                for row in feed:
+                    total += 1
+                    identity = (kind, row.get('id'))
+                    content = (row.get('item', {}).get('id'), row.get('quantity'), row.get('buyout'), row.get('unit_price'))
+                    if identity in seen and seen[identity] != content:
+                        conflicts += 1
+                    seen[identity] = content
+        print(json.dumps({'factionRows': total, 'uniqueIds': len(seen), 'conflictingIds': conflicts}), flush=True)

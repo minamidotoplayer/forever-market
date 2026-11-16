@@ -569,3 +569,143 @@ test("active filters stay visible when their controls are closed and can be remo
     cleanup();
   }
 });
+
+test("arriving metadata immediately updates search and category matches", () => {
+  const props = {
+    market,
+    names: { 1: { name: "Item #1" }, 2: names[2] },
+    selected: "1",
+    onSelect: () => {},
+    onAdd: () => {},
+    favorites: new Set(),
+    onFavorite: () => {},
+    favoritesOnly: false,
+    t: (en) => en,
+    language: "en",
+    onVisible: () => {},
+  };
+  const view = render(React.createElement(Listings, props));
+  try {
+    fireEvent.change(view.getByLabelText("Search items"), {
+      target: { value: "arc eli" },
+    });
+    assert.equal(view.container.querySelectorAll("tbody tr").length, 0);
+    view.rerender(React.createElement(Listings, { ...props, names }));
+    assert.ok(view.getByText("Greater Arcane Elixir"));
+    fireEvent.change(view.getByLabelText("Search items"), {
+      target: { value: "" },
+    });
+    view.rerender(React.createElement(Listings, props));
+    fireEvent.click(
+      view.getByRole("button", { name: "Consumables", exact: true }),
+    );
+    assert.equal(view.container.querySelectorAll("tbody tr").length, 0);
+    view.rerender(React.createElement(Listings, { ...props, names }));
+    assert.ok(view.getByText("Greater Arcane Elixir"));
+  } finally {
+    cleanup();
+  }
+});
+
+test("pagination exposes every snapshot item without dropping the final page", () => {
+  const items = Object.fromEntries(
+    Array.from({ length: 43 }, (_, i) => [String(i + 1), [i + 1, i + 1, 1, 1]]),
+  );
+  const view = render(
+    React.createElement(Listings, {
+      market: { updatedAt: 1, items },
+      names: {},
+      selected: "1",
+      onSelect: () => {},
+      onAdd: () => {},
+      favorites: new Set(),
+      onFavorite: () => {},
+      favoritesOnly: false,
+      t: (en) => en,
+      language: "en",
+      onVisible: () => {},
+    }),
+  );
+  try {
+    const seen = new Set();
+    for (let page = 0; page < 3; page++) {
+      for (const row of view.container.querySelectorAll("tbody tr"))
+        seen.add(row.dataset.id);
+      if (page < 2)
+        fireEvent.click(view.getByRole("button", { name: "Next page" }));
+    }
+    assert.equal(seen.size, 43);
+    assert.equal(
+      view.getByRole("button", { name: "Next page" }).disabled,
+      true,
+    );
+  } finally {
+    cleanup();
+  }
+});
+function RulesetHarness() {
+  const data = useMarket("", false);
+  return React.createElement(
+    "div",
+    null,
+    React.createElement(
+      "output",
+      null,
+      data.market?.items["1"]?.[0] ?? "loading",
+    ),
+    React.createElement(
+      "button",
+      { onClick: () => data.setSelection((old) => ({ ...old, ruleset: "2" })) },
+      "switch ruleset",
+    ),
+  );
+}
+test("changing ruleset loads its own snapshot and replaces the previous price", async () => {
+  const original = fetch;
+  localStorage.clear();
+  const paths = [];
+  globalThis.fetch = async (url) => {
+    const path = String(url);
+    paths.push(path);
+    return {
+      ok: true,
+      json: async () =>
+        path.includes("index.json")
+          ? {
+              regions: [
+                {
+                  id: "eu",
+                  rulesets: [1, 2].map((id) => ({
+                    id,
+                    name: String(id),
+                    houses: [{ id: 110, name: "Alliance", key: `eu-${id}` }],
+                  })),
+                },
+              ],
+            }
+          : path.includes("items.json")
+            ? names
+            : path.includes("history/")
+              ? { hourly: {}, daily: {} }
+              : {
+                  updatedAt: 1,
+                  items: { 1: [path.includes("eu-2") ? 200 : 100, 1, 1, 1] },
+                },
+    };
+  };
+  try {
+    const view = render(React.createElement(RulesetHarness));
+    await waitFor(() =>
+      assert.equal(view.getByRole("status").textContent, "100"),
+    );
+    fireEvent.click(view.getByText("switch ruleset"));
+    await waitFor(() =>
+      assert.equal(view.getByRole("status").textContent, "200"),
+    );
+    assert.ok(paths.some((path) => path.includes("markets/eu-2.json")));
+  } finally {
+    cleanup();
+    globalThis.fetch = original;
+    localStorage.clear();
+  }
+});

@@ -4,7 +4,7 @@ on:
     branches: [main]
   workflow_dispatch:
   workflow_run:
-    workflows: ['Collect market data']
+    workflows: ['Collect market data', 'Complete item catalogue']
     types: [completed]
 permissions:
   contents: read

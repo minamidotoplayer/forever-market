@@ -175,16 +175,18 @@ export function Listings({
     () =>
       filterItems(
         market?.items,
-        sortingNames,
+        names,
         query,
         favorites,
         favoritesOnly,
         sort,
         direction,
         filters,
+        sortingNames,
       ),
     [
       market,
+      names,
       sortingNames,
       query,
       favorites,

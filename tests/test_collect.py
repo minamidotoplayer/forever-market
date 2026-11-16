@@ -10,6 +10,32 @@ spec.loader.exec_module(collector)
 
 
 class CollectorTest(unittest.TestCase):
+    def setUp(self):
+        tooltip = patch.object(collector, 'fetch_tooltip_metadata', return_value=None)
+        tooltip.start()
+        self.addCleanup(tooltip.stop)
+
+    def test_tooltip_enriches_names_icons_and_category_together(self):
+        meta = collector.tooltip_metadata({'name': ' Dreamfoil ', 'icon': 'inv_misc_herb_16', 'quality': 1, 'tooltip': '<!--scstart7:9-->'})
+        self.assertEqual(meta['name'], 'Dreamfoil')
+        self.assertEqual(meta['classId'], 7)
+        self.assertEqual(meta['subclassId'], 9)
+        self.assertEqual(meta['requiredLevel'], 0)
+        self.assertTrue(meta['icon'].startswith('https://wow.zamimg.com/'))
+        self.assertIsNone(collector.tooltip_metadata({'name': ''}))
+        self.assertIsNone(collector.tooltip_metadata({'name': 'X', 'icon': '../bad'})['icon'])
+
+    def test_missing_blizzard_record_gets_complete_tooltip_metadata(self):
+        class API:
+            def get(self, *args, **kwargs): return None
+        meta = collector.tooltip_metadata({'name': 'Dreamfoil', 'icon': 'inv_misc_herb_16', 'quality': 1, 'tooltip': '<!--scstart7:9-->'})
+        with patch.object(collector, 'fetch_tooltip_metadata', return_value=meta):
+            result = collector.resolve_item_metadata(API(), 'eu', '13463', 100)
+        self.assertEqual(result['name'], 'Dreamfoil')
+        self.assertFalse(result['missing'])
+        self.assertEqual(result['classId'], 7)
+        self.assertEqual(result['source'], 'wowhead')
+
     def test_metadata_failure_preserves_cached_item(self):
         class API:
             def get(self, *args, **kwargs):

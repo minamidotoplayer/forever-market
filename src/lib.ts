@@ -96,6 +96,7 @@ export function filterItems(
   sortKey: string,
   direction: number,
   filters: Filters = {},
+  sortingNames: Catalogue = names,
 ) {
   const search = query.trim().toLocaleLowerCase();
   const terms = search ? search.split(/\s+/) : [];
@@ -139,8 +140,8 @@ export function filterItems(
           : sortKey === "volume"
             ? av[2] - bv[2]
             : itemNameCollator.compare(
-                names[a]?.name || a,
-                names[b]?.name || b,
+                sortingNames[a]?.name || a,
+                sortingNames[b]?.name || b,
               );
       return (result || Number(a) - Number(b)) * direction;
     });

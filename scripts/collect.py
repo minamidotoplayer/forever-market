@@ -6,6 +6,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import time
 import urllib.error
@@ -126,6 +127,30 @@ def localized_name(value):
     return ''
 
 
+def tooltip_metadata(data):
+    if not isinstance(data, dict) or not isinstance(data.get('name'), str) or not data['name'].strip():
+        return None
+    tooltip = data.get('tooltip') or ''
+    category = re.search(r'<!--scstart(\d+):(\d+)-->', tooltip)
+    level = re.search(r'<!--rlvl-->(\d+)', tooltip)
+    icon = data.get('icon')
+    quality = data.get('quality')
+    return {'name': data['name'].strip(),
+            'icon': f'https://wow.zamimg.com/images/wow/icons/medium/{icon}.jpg' if isinstance(icon, str) and re.fullmatch(r'[a-zA-Z0-9_]+', icon) else None,
+            'quality': quality if type(quality) is int and 0 <= quality <= 5 else None,
+            'classId': int(category[1]) if category else None,
+            'subclassId': int(category[2]) if category else None,
+            'requiredLevel': int(level[1]) if level else 0,
+            'metadataVersion': 3}
+
+
+def fetch_tooltip_metadata(item_id):
+    try:
+        return tooltip_metadata(request_json(f'https://nether.wowhead.com/forever/tooltip/item/{int(item_id)}', optional=True))
+    except (RuntimeError, ValueError):
+        return None
+
+
 def fallback_item_name(item_id):
     """Resolve missing names from Wowhead's Forever tooltip data."""
     try:
@@ -153,15 +178,19 @@ def resolve_item_metadata(api, region, item_id, now):
     try:
         item = api.get(region, f'/data/wow/item/{int(item_id)}', 'static', optional=True)
         name = localized_name((item or {}).get('name'))
-        source = 'blizzard'
-        if not name:
-            name = fallback_item_name(item_id)
-            source = 'wowhead' if name else 'unknown'
+        source = 'blizzard' if name else 'unknown'
         media = api.get(region, f'/data/wow/media/item/{int(item_id)}', 'static', optional=True) or {}
         icon = next((asset.get('value') for asset in media.get('assets', []) if asset.get('key') == 'icon' and isinstance(asset.get('value'), str) and asset['value'].startswith('https://')), None)
         item = item or {}
         quality = {'POOR': 0, 'COMMON': 1, 'UNCOMMON': 2, 'RARE': 3, 'EPIC': 4, 'LEGENDARY': 5}.get(item.get('quality', {}).get('type'))
-        return {'name': name or f'Item #{item_id}', 'checkedAt': now, 'missing': not bool(name), 'icon': icon, 'mediaCheckedAt': now, 'fallbackCheckedAt': now, 'source': source, 'filterCheckedAt': now, 'quality': quality, 'classId': item.get('item_class', {}).get('id'), 'subclassId': item.get('item_subclass', {}).get('id'), 'requiredLevel': item.get('required_level')}
+        record = {'name': name or f'Item #{item_id}', 'checkedAt': now, 'missing': not bool(name), 'icon': icon, 'mediaCheckedAt': now, 'fallbackCheckedAt': now, 'source': source, 'filterCheckedAt': now, 'quality': quality, 'classId': item.get('item_class', {}).get('id'), 'subclassId': item.get('item_subclass', {}).get('id'), 'requiredLevel': item.get('required_level')}
+        if not name or not icon or record['classId'] is None or record['subclassId'] is None or quality is None:
+            fallback = fetch_tooltip_metadata(item_id)
+            if fallback:
+                record.update({key: value for key, value in fallback.items() if value is not None and (key == 'metadataVersion' or record.get(key) is None)})
+                if record['missing']:
+                    record.update(name=fallback['name'], missing=False, source='wowhead')
+        return record
     except RuntimeError:
         return None
 

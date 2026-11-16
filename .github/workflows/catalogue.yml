@@ -1,0 +1,38 @@
+name: Complete item catalogue
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ['Collect market data']
+    types: [completed]
+permissions:
+  contents: write
+concurrency:
+  group: forever-market-collect
+  cancel-in-progress: false
+jobs:
+  catalogue:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Restore current market data
+        run: |
+          git fetch origin market-data --depth=1
+          git worktree add --detach "$RUNNER_TEMP/catalogue" FETCH_HEAD
+      - name: Complete names, icons and categories
+        run: python scripts/backfill_metadata.py --root "$RUNNER_TEMP/catalogue/data"
+      - name: Save completed catalogue
+        run: |
+          git -C "$RUNNER_TEMP/catalogue" config user.name 'github-actions[bot]'
+          git -C "$RUNNER_TEMP/catalogue" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git -C "$RUNNER_TEMP/catalogue" add data/items.json
+          if ! git -C "$RUNNER_TEMP/catalogue" diff --cached --quiet; then
+            git -C "$RUNNER_TEMP/catalogue" commit -m 'Complete current item metadata'
+            git -C "$RUNNER_TEMP/catalogue" push origin HEAD:market-data
+          fi
