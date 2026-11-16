@@ -379,9 +379,24 @@ kbd {
   overflow: auto;
 }
 .item-table {
+  table-layout: fixed;
+  min-width: 540px;
   border-collapse: collapse;
   width: 100%;
   font-size: 13px;
+}
+.price-column {
+  width: 140px;
+}
+.quantity-column {
+  width: 78px;
+}
+.favorite-column {
+  width: 44px;
+}
+.item-label {
+  min-width: 0;
+  flex: 1;
 }
 .item-table th {
   text-align: left;
@@ -451,6 +466,13 @@ kbd {
 }
 .item-name {
   display: block;
+  max-width: 100%;
+  padding: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: normal;
+  word-spacing: normal;
   text-align: left;
   font-size: 13px;
   color: #efddad;
@@ -1400,15 +1422,53 @@ select option:checked {
   cursor: pointer;
   margin: 0 6px 10px;
 }
-.category-group > summary {
-  font-size: 12px;
-  color: #d8bc89;
-  padding: 9px 6px;
-  cursor: pointer;
-  border-bottom: 1px solid #342519;
+.category-path {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 10px;
+  color: #ebc681;
+  font-size: 11px;
+  border-bottom: 1px solid #4c3521;
+  margin-bottom: 6px;
 }
-.category-group[open] > summary {
-  color: #ffe1a3;
+.category-path span {
+  flex: 1;
+  min-width: 0;
+}
+.category-path button {
+  font-size: 20px;
+  padding: 0 4px;
+}
+.category-parent {
+  display: flex;
+  align-items: stretch;
+}
+.category-parent .category-choice {
+  flex: 1;
+  min-width: 0;
+}
+.category-toggle {
+  flex: 0 0 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #bca889;
+}
+.category-toggle:hover {
+  color: #ffe5b5;
+  background: #392819;
+}
+.selected-group > .category-parent {
+  color: #f5d79b;
+}
+.selected-group > .category-parent .category-choice {
+  color: inherit;
+}
+.category-children {
+  border-left: 1px solid #614225;
+  margin: 2px 0 5px 9px;
 }
 .category-choice {
   display: block;
@@ -1422,8 +1482,8 @@ select option:checked {
   padding: 8px;
   line-height: 1.35;
 }
-.category-group .category-choice {
-  padding-left: 17px;
+.category-children .category-choice {
+  padding-left: 12px;
 }
 .category-choice:hover {
   background: #392819;
@@ -1445,7 +1505,7 @@ select option:checked {
   display: none;
 }
 .workspace {
-  grid-template-columns: minmax(0, 1.4fr) minmax(350px, 1fr);
+  grid-template-columns: minmax(0, 1.8fr) minmax(320px, 1fr);
 }
 @media (max-width: 1100px) {
   .workspace {

@@ -61,6 +61,10 @@ test("English listing UI has partial search and category filters", () => {
     target: { value: "arc eli" },
   });
   assert.ok(view.getByText("Greater Arcane Elixir"));
+  assert.equal(
+    view.getByText("Greater Arcane Elixir").title,
+    "Greater Arcane Elixir",
+  );
   assert.equal(view.queryByText("Dreamfoil"), null);
   assert.equal(/[А-Яа-яЁё]/.test(view.container.textContent), false);
   cleanup();
@@ -335,4 +339,90 @@ test("Russian recipe response is discarded after switching to English", async ()
   } finally {
     cleanup();
   }
+});
+const { CategoryTree } = await import("../src/components/CategoryTree.tsx");
+function CategoryHarness() {
+  const [filters, setFilters] = React.useState({});
+  return React.createElement(CategoryTree, {
+    filters,
+    language: "en",
+    t: (en) => en,
+    onChoose: (classId, subclassId) => setFilters({ classId, subclassId }),
+  });
+}
+test("category parent selects and expands in one click; child and clear are explicit", () => {
+  const view = render(React.createElement(CategoryHarness));
+  fireEvent.click(view.getByRole("button", { name: "Armor", exact: true }));
+  assert.equal(
+    view
+      .getByRole("button", { name: "Armor", exact: true })
+      .getAttribute("aria-pressed"),
+    "true",
+  );
+  fireEvent.click(view.getByRole("button", { name: "Leather", exact: true }));
+  assert.ok(
+    view
+      .getByLabelText("Selected category")
+      .textContent.includes("Armor / Leather"),
+  );
+  fireEvent.click(
+    view.getByRole("button", { name: "Collapse Armor", exact: true }),
+  );
+  assert.ok(
+    view
+      .getByLabelText("Selected category")
+      .textContent.includes("Armor / Leather"),
+  );
+  assert.equal(
+    view
+      .getByRole("button", { name: "Expand Armor", exact: true })
+      .getAttribute("aria-expanded"),
+    "false",
+  );
+  fireEvent.click(
+    view.getByRole("button", { name: "Expand Armor", exact: true }),
+  );
+  assert.equal(
+    view
+      .getByRole("button", { name: "Leather", exact: true })
+      .getAttribute("aria-pressed"),
+    "true",
+  );
+  fireEvent.click(
+    view.getByRole("button", { name: "Clear category", exact: true }),
+  );
+  assert.equal(
+    view
+      .getByRole("button", { name: "All items", exact: true })
+      .getAttribute("aria-pressed"),
+    "true",
+  );
+  cleanup();
+});
+
+test("category choice filters listings and clearing restores the market", () => {
+  const view = render(
+    React.createElement(Listings, {
+      market,
+      names,
+      selected: "1",
+      onSelect: () => {},
+      favorites: new Set(),
+      onFavorite: () => {},
+      favoritesOnly: false,
+      t: (en) => en,
+      language: "en",
+      onVisible: () => {},
+    }),
+  );
+  fireEvent.click(
+    view.getByRole("button", { name: "Consumables", exact: true }),
+  );
+  assert.ok(view.getByText("Greater Arcane Elixir"));
+  assert.equal(view.queryByText("Dreamfoil"), null);
+  fireEvent.click(
+    view.getByRole("button", { name: "Clear category", exact: true }),
+  );
+  assert.ok(view.getByText("Dreamfoil"));
+  cleanup();
 });

@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { auctionCategories } from "../categories";
+import { CategoryTree } from "./CategoryTree";
 import { csvValue, filterItems } from "../lib";
 import { Money, ItemIcon, qualityClass } from "./Common";
 import type {
@@ -51,8 +51,9 @@ const Row = memo(function Row({
       <td>
         <div className="item-cell">
           <ItemIcon meta={meta} />
-          <div>
+          <div className="item-label">
             <button
+              title={meta?.name || `${t("Item", "Предмет")} #${id}`}
               className={`item-name quiet ${qualityClass(meta?.quality)}`}
               onClick={(e) => {
                 e.stopPropagation();
@@ -323,43 +324,21 @@ export function Listings({
         </div>
       </details>
       <div className="listing-layout">
-        <details className="category-browser" open>
-          <summary>{t("Categories", "Категории")}</summary>
-          <nav aria-label={t("Item categories", "Категории предметов")}>
-            <button
-              className={`category-choice ${filters.classId == null ? "active" : ""}`}
-              onClick={() => chooseCategory(null, null)}
-            >
-              {t("All items", "Все предметы")}
-            </button>
-            {auctionCategories.map((category) => (
-              <details className="category-group" key={category.id}>
-                <summary>
-                  {language === "ru" ? category.ru : category.en}
-                </summary>
-                <button
-                  className={`category-choice ${filters.classId === category.id && filters.subclassId == null ? "active" : ""}`}
-                  onClick={() => chooseCategory(category.id, null)}
-                >
-                  {t("All", "Все")} ·{" "}
-                  {language === "ru" ? category.ru : category.en}
-                </button>
-                {category.children.map(([id, ru, en]) => (
-                  <button
-                    key={id}
-                    className={`category-choice ${filters.classId === category.id && filters.subclassId === id ? "active" : ""}`}
-                    onClick={() => chooseCategory(category.id, id)}
-                  >
-                    {t(en, ru)}
-                  </button>
-                ))}
-              </details>
-            ))}
-          </nav>
-        </details>
+        <CategoryTree
+          filters={filters}
+          language={language}
+          t={t}
+          onChoose={chooseCategory}
+        />
         <div className="listing-results">
           <div className="table-scroll">
             <table className="item-table">
+              <colgroup>
+                <col />
+                <col className="price-column" />
+                <col className="quantity-column" />
+                <col className="favorite-column" />
+              </colgroup>
               <thead>
                 <tr>
                   {(["name", "price", "volume"] as const).map((key, i) => (
